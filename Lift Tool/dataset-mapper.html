@@ -761,23 +761,50 @@ function parseCSV(text) {
   });
 }
 
+// Columns each file must have to be usable. Checked against the parsed header
+// row so a file that's missing them (e.g. the header got deleted along with
+// unwanted rows during manual trimming) fails loudly instead of silently
+// merging into all-zero results.
+const REQUIRED_COLS = {
+  sales:   ['geo_id', 'day'],
+  cells:   ['cellNum', 'cellType'],
+  matched: ['Control DMA ID']
+};
+// cells rows also need an id column to join on — checked separately since
+// either locationId or dmaCode satisfies it.
+const CELLS_ID_COLS = ['locationId', 'dmaCode'];
+
 function handleFile(type, input) {
   const file = input.files[0];
   if (!file) return;
   const reader = new FileReader();
   reader.onload = e => {
+    const statusEl = document.getElementById('status-' + type);
+    const cardEl   = document.getElementById('card-' + type);
     try {
       const rows = parseCSV(e.target.result);
+      if (rows.length === 0) {
+        throw new Error('no data rows found (only a header row, or an empty file)');
+      }
+      const headers = Object.keys(rows[0]);
+      const missing = REQUIRED_COLS[type].filter(c => !headers.includes(c));
+      if (type === 'cells' && !CELLS_ID_COLS.some(c => headers.includes(c))) {
+        missing.push(`one of (${CELLS_ID_COLS.join(' / ')})`);
+      }
+      if (missing.length) {
+        throw new Error(`missing required column${missing.length > 1 ? 's' : ''}: ${missing.join(', ')}`);
+      }
       state[type] = rows;
-      const statusEl = document.getElementById('status-' + type);
-      const cardEl   = document.getElementById('card-' + type);
-      statusEl.textContent = `✓ ${rows.length.toLocaleString()} rows · ${Object.keys(rows[0]).length} cols`;
+      statusEl.textContent = `✓ ${rows.length.toLocaleString()} rows · ${headers.length} cols`;
       statusEl.className = 'upload-status';
       cardEl.classList.add('loaded');
       checkReady();
     } catch(err) {
-      document.getElementById('status-' + type).textContent = '✗ Parse error: ' + err.message;
-      document.getElementById('status-' + type).className = 'upload-status error';
+      state[type] = null;
+      cardEl.classList.remove('loaded');
+      statusEl.textContent = '✗ ' + err.message;
+      statusEl.className = 'upload-status error';
+      checkReady();
     }
   };
   reader.readAsText(file);
