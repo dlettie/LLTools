@@ -1,0 +1,1265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Sales Data MMA Mapper - Analyze rolling factors and mapping data">
+  <title>Sales Data MMA Mapper v4.3</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #f0f0f0;
+      color: #1a1a1a;
+      padding: 0;
+      margin: 0;
+    }
+
+    .page {
+      display: none;
+      min-height: 100vh;
+      background: white;
+      padding: 3rem 2rem 2rem;
+      max-width: 1200px;
+      margin: 0 auto;
+      position: relative;
+    }
+
+    .page.active {
+      display: block;
+    }
+
+    .page-header {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 60px;
+      background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0 2rem;
+      color: white;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+
+    .page-title {
+      font-size: 18px;
+      font-weight: 600;
+    }
+
+    .page-nav {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .page-counter {
+      font-size: 13px;
+      opacity: 0.9;
+    }
+
+    button {
+      padding: 8px 16px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      border: none;
+      transition: all 0.2s;
+    }
+
+    button:focus-visible {
+      outline: 3px solid #2563eb;
+      outline-offset: 2px;
+    }
+
+    input:focus,
+    select:focus,
+    textarea:focus {
+      outline: 3px solid #2563eb;
+      outline-offset: 2px;
+    }
+
+    .skip-link {
+      position: absolute;
+      top: -40px;
+      left: 0;
+      background: #2563eb;
+      color: white;
+      padding: 8px;
+      text-decoration: none;
+      z-index: 100;
+    }
+
+    .skip-link:focus {
+      top: 0;
+    }
+
+    .btn-nav {
+      background: rgba(255,255,255,0.2);
+      color: white;
+      border: 1px solid rgba(255,255,255,0.3);
+    }
+
+    .btn-nav:hover {
+      background: rgba(255,255,255,0.3);
+    }
+
+    .btn-nav:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .btn-primary {
+      background: #2563eb;
+      color: white;
+      margin-top: 1.5rem;
+    }
+
+    .btn-primary:hover {
+      background: #1d4ed8;
+    }
+
+    .btn-secondary {
+      background: white;
+      color: #1a1a1a;
+      border: 1px solid #d0d0d0;
+    }
+
+    .btn-secondary:hover {
+      background: #f9f9f9;
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      margin-bottom: 1.5rem;
+    }
+
+    label {
+      font-size: 14px;
+      color: #333;
+      margin-bottom: 8px;
+      font-weight: 500;
+    }
+
+    input[type="file"],
+    input[type="date"],
+    select {
+      padding: 10px 12px;
+      border: 1px solid #d0d0d0;
+      border-radius: 6px;
+      font-size: 14px;
+      background: white;
+      font-family: inherit;
+    }
+
+    input[type="file"]:focus,
+    input[type="date"]:focus,
+    select:focus {
+      outline: none;
+      border-color: #2563eb;
+      box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.1);
+    }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .status {
+      display: none;
+      padding: 12px;
+      border-radius: 6px;
+      font-size: 13px;
+      margin-bottom: 1.5rem;
+      border-left: 4px solid;
+    }
+
+    .status.show {
+      display: block;
+    }
+
+    .status.error {
+      background: #fef2f2;
+      color: #7f1d1d;
+      border-left-color: #dc2626;
+    }
+
+    .status.success {
+      background: #f0fdf4;
+      color: #166534;
+      border-left-color: #22c55e;
+    }
+
+    .status.info {
+      background: #eff6ff;
+      color: #0c4a6e;
+      border-left-color: #0284c7;
+    }
+
+    .info-box {
+      background: #f9f9f9;
+      border: 1px solid #e0e0e0;
+      border-radius: 6px;
+      padding: 1rem;
+      margin-bottom: 1.5rem;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .checkbox-group {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-top: 8px;
+    }
+
+    .checkbox-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .checkbox-item input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+      cursor: pointer;
+      accent-color: #2563eb;
+    }
+
+    .checkbox-item label {
+      margin: 0;
+      font-weight: 400;
+      font-size: 13px;
+      cursor: pointer;
+    }
+
+    .table-wrapper {
+      overflow-x: auto;
+      border: 1px solid #e0e0e0;
+      border-radius: 6px;
+      margin-bottom: 1.5rem;
+      max-height: 500px;
+      overflow-y: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+
+    thead {
+      position: sticky;
+      top: 0;
+      background: #f9f9f9;
+      border-bottom: 1px solid #e0e0e0;
+      z-index: 10;
+    }
+
+    th {
+      padding: 8px 10px;
+      text-align: left;
+      font-weight: 600;
+      border-right: 1px solid #e0e0e0;
+      white-space: nowrap;
+      background: #f9f9f9;
+    }
+
+    th:last-child {
+      border-right: none;
+    }
+
+    td {
+      padding: 8px 10px;
+      border-right: 1px solid #e0e0e0;
+      border-bottom: 1px solid #f0f0f0;
+    }
+
+    td:last-child {
+      border-right: none;
+    }
+
+    tbody tr:hover {
+      background: #fafafa;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.5rem;
+    }
+
+    .select-box {
+      background: #f9f9f9;
+      border: 1px solid #e0e0e0;
+      border-radius: 6px;
+      padding: 1rem;
+    }
+
+    .select-box label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: 600;
+      font-size: 13px;
+    }
+
+    .select-box select {
+      width: 100%;
+    }
+
+    .section-title {
+      margin: 2rem 0 1rem;
+      font-size: 14px;
+      font-weight: 700;
+      color: #1a1a1a;
+      border-bottom: 2px solid #2563eb;
+      padding-bottom: 8px;
+    }
+
+    @media (max-width: 768px) {
+      .page {
+        padding: 3rem 1rem 2rem;
+      }
+
+      .form-row,
+      .grid-2 {
+        grid-template-columns: 1fr;
+      }
+
+      .page-header {
+        padding: 0 1rem;
+        flex-direction: column;
+        height: auto;
+        gap: 1rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <a href="#main-content" class="skip-link">Skip to main content</a>
+  
+  <main id="main-content">
+  <!-- PAGE 1: Upload -->
+  <section class="page active" id="page1" aria-label="Step 1: Upload Data">
+    <header class="page-header">
+      <h1 class="page-title">📊 Step 1: Upload Data</h1>
+      <nav class="page-nav" aria-label="Page navigation">
+        <span class="page-counter" aria-current="page">1 / 3</span>
+        <button class="btn-nav" id="nextBtn1" aria-label="Go to next step">Next →</button>
+      </nav>
+    </header>
+
+    <article style="margin-top: 1rem;">
+      <div class="info-box" role="status">
+        Upload your Sales data CSV and MMA Mapping reference file. The system will check for correct columns and prepare the data for analysis.
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label for="salesFile">Sales Data (CSV)</label>
+          <input type="file" id="salesFile" accept=".csv" aria-describedby="salesDesc" />
+          <p id="salesDesc" style="font-size: 12px; color: #999; margin-top: 4px;">Required: day, geo_id, category_nm, target_variable_nm, orders, random_location_type</p>
+        </div>
+        <div class="form-group">
+          <label for="mmaFile">MMA Mapping (CSV)</label>
+          <input type="file" id="mmaFile" accept=".csv" aria-describedby="mmaDesc" />
+          <p id="mmaDesc" style="font-size: 12px; color: #999; margin-top: 4px;">Required: locationCode, cellType</p>
+        </div>
+      </div>
+
+      <div id="status1" class="status" role="alert" aria-live="polite"></div>
+
+      <button class="btn-primary" id="loadBtn" aria-label="Load CSV files">Load Files</button>
+    </article>
+  </section>
+
+  <!-- PAGE 2: Preview & Map -->
+  <section class="page" id="page2" aria-label="Step 2: Data Preview">
+    <header class="page-header">
+      <h1 class="page-title">🔍 Step 2: Data Preview</h1>
+      <nav class="page-nav" aria-label="Page navigation">
+        <span class="page-counter" aria-current="page">2 / 3</span>
+        <div>
+          <button class="btn-nav" id="backBtn2" aria-label="Go back to previous step">← Back</button>
+          <button class="btn-nav" id="nextBtn2" aria-label="Go to next step">Next →</button>
+        </div>
+      </nav>
+    </header>
+
+    <article style="margin-top: 1rem;">
+      <div class="form-row">
+        <div class="info-box">
+          <h2 style="font-size: 13px; margin-bottom: 8px;">Sales Columns:</h2>
+          <span id="salesColsPreview" style="font-size: 12px; font-family: monospace; word-break: break-all;" aria-label="Sales data columns list"></span>
+        </div>
+        <div class="info-box">
+          <h2 style="font-size: 13px; margin-bottom: 8px;">MMA Columns:</h2>
+          <span id="mmaColsPreview" style="font-size: 12px; font-family: monospace; word-break: break-all;" aria-label="MMA mapping columns list"></span>
+        </div>
+      </div>
+
+      <h2 style="margin: 1.5rem 0 1rem; font-size: 14px; font-weight: 600;">Sample Sales Data (First 5 rows):</h2>
+      <div style="max-height: 400px; overflow-x: auto; border: 1px solid #e0e0e0; border-radius: 6px; margin-bottom: 1.5rem;">
+        <table id="previewTable" style="width: 100%; border-collapse: collapse; font-size: 12px;" role="table" aria-label="Sample sales data preview">
+          <thead style="position: sticky; top: 0; background: #f9f9f9; border-bottom: 1px solid #e0e0e0; z-index: 10;">
+            <tr></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <div class="info-box">
+        <h2 style="font-size: 13px; margin-bottom: 8px;">Mapping Status:</h2>
+        <span id="mappingStatus" style="font-size: 12px;" aria-label="Data mapping status"></span>
+      </div>
+
+      <div class="form-row">
+        <div class="info-box">
+          <h2 style="font-size: 13px; margin-bottom: 8px;">Categories Found:</h2>
+          <span id="categoriesPreview" style="font-size: 12px; font-family: monospace; word-break: break-all;" aria-label="List of categories found in data"></span>
+        </div>
+        <div class="info-box">
+          <h2 style="font-size: 13px; margin-bottom: 8px;">Target Variables Found:</h2>
+          <span id="variablesPreview" style="font-size: 12px; font-family: monospace; word-break: break-all;" aria-label="List of target variables found in data"></span>
+        </div>
+      </div>
+    </article>
+  </section>
+
+  <!-- PAGE 3: Analyze with Date Configuration -->
+  <section class="page" id="page3" aria-label="Rolling Factor Analysis">
+    <header class="page-header">
+      <h1 class="page-title">📊 Rolling Factor Analysis</h1>
+      <nav class="page-nav" aria-label="Page navigation">
+        <span class="page-counter" aria-current="page">Final</span>
+        <button class="btn-nav" id="backBtn3" aria-label="Go back to previous step">← Back</button>
+      </nav>
+    </header>
+
+    <article style="margin-top: 1rem;">
+      <div class="info-box" role="status">
+        Configure your dates, select analysis parameters, and click "Analyze" to generate rolling factor calculations.
+      </div>
+
+      <section>
+        <h2 class="section-title">Date Configuration</h2>
+        <fieldset style="border: none; padding: 0;">
+          <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem;">
+            <div class="select-box">
+              <label for="startDate">Analysis Start Date</label>
+              <input type="date" id="startDate" required aria-required="true" />
+            </div>
+            <div class="select-box">
+              <label for="endDate">Analysis End Date</label>
+              <input type="date" id="endDate" required aria-required="true" />
+            </div>
+            <div class="select-box">
+              <label for="aaEndDate">AA End Date (Cutoff)</label>
+              <input type="date" id="aaEndDate" aria-describedby="aaEndDateDesc" />
+              <p id="aaEndDateDesc" style="font-size: 11px; color: #666; margin-top: 4px;">Rolling factors only for dates ≤ this date</p>
+            </div>
+          </div>
+        </fieldset>
+      </section>
+
+      <section>
+        <h2 class="section-title">Analysis Parameters</h2>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem;">
+        <div class="select-box">
+          <label for="categoryFilter">Category</label>
+          <select id="categoryFilter">
+            <option value="">All</option>
+          </select>
+        </div>
+        <div class="select-box">
+          <label for="variableFilter">Target Variable</label>
+          <select id="variableFilter">
+            <option value="">All</option>
+          </select>
+        </div>
+        <div class="select-box">
+          <label for="controlCell">Control (Baseline)</label>
+          <select id="controlCell"></select>
+          <p style="font-size: 11px; color: #666; margin-top: 4px;">Baseline cell type</p>
+        </div>
+        <div class="select-box">
+          <label for="treatedCell">Treated (Comparison)</label>
+          <select id="treatedCell"></select>
+          <p style="font-size: 11px; color: #666; margin-top: 4px;">Comparison cell type</p>
+        </div>
+      </div>
+
+      <button class="btn-primary" id="calculateBtn" style="font-size: 16px; padding: 12px 24px; margin-top: 1rem;" aria-label="Calculate rolling factors">Analyze</button>
+
+      <div id="rollingOutput" style="display: none;" role="region" aria-live="polite" aria-label="Rolling factor results">
+        <div class="section-title">Distribution Charts</div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1.5rem; margin-bottom: 2rem;">
+          <div style="border: 1px solid #e0e0e0; border-radius: 6px; padding: 1rem; background: white;">
+            <canvas id="chart30day"></canvas>
+          </div>
+          <div style="border: 1px solid #e0e0e0; border-radius: 6px; padding: 1rem; background: white;">
+            <canvas id="chart60day"></canvas>
+          </div>
+          <div style="border: 1px solid #e0e0e0; border-radius: 6px; padding: 1rem; background: white;">
+            <canvas id="chart90day"></canvas>
+          </div>
+        </div>
+
+        <div class="section-title">Rolling Factors Table</div>
+        <div class="table-wrapper" role="region" aria-label="Rolling factors data">
+          <table id="rollingTable" role="table" aria-label="Rolling factor analysis results">
+            <caption>Rolling Factor Analysis Results - showing daily and rolling 30, 60, and 90 day factors</caption>
+            <thead>
+              <tr>
+                <th scope="col">Date</th>
+                <th scope="col" style="text-align: right;">Treated Daily</th>
+                <th scope="col" style="text-align: right;">Control Daily</th>
+                <th scope="col" style="text-align: right;">Daily Factor</th>
+                <th scope="col" style="text-align: right;">30-Day Factor</th>
+                <th scope="col" style="text-align: right;">60-Day Factor</th>
+                <th scope="col" style="text-align: right;">90-Day Factor</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+
+        <div style="display: flex; gap: 8px; margin-top: 1.5rem;">
+          <button class="btn-primary" id="downloadRolling" aria-label="Download rolling factors as CSV file">Download Rolling Factors CSV</button>
+          <button class="btn-secondary" id="downloadPivot" aria-label="Download pivot table as CSV file">Download Pivot Table CSV</button>
+        </div>
+
+        <div class="info-box" style="margin-top: 2rem;">
+          <strong>Calculation Logic:</strong><br>
+          <span style="font-size: 12px;">
+            • <strong>30-Day Factor:</strong> Appears from Day 30 onwards. = Sum(Treated last 30 days) / Sum(Control last 30 days)<br>
+            • <strong>60-Day Factor:</strong> Appears from Day 60 onwards. = Sum(Treated last 60 days) / Sum(Control last 60 days)<br>
+            • <strong>90-Day Factor:</strong> Appears from Day 90 onwards. = Sum(Treated last 90 days) / Sum(Control last 90 days)<br>
+            • Only data ≤ AA End Date is included
+          </span>
+        </div>
+      </div>
+      </section>
+    </article>
+  </section>
+
+  <script>
+    let state = {
+      salesData: null,
+      mmaData: null,
+      mappedData: null,
+      filteredData: null,
+      pivotData: null,
+      rollingData: null,
+      dateRange: {}
+    };
+
+    let currentPage = 1;
+
+    const showStatus = (pageNum, msg, type = 'info') => {
+      const status = document.getElementById(`status${pageNum}`);
+      if (status) {
+        status.textContent = msg;
+        status.className = `status show ${type}`;
+      }
+    };
+
+    const parseDate = (dateStr) => {
+      if (!dateStr) return null;
+      const d = new Date(dateStr);
+      return isNaN(d) ? null : d;
+    };
+
+    const formatDate = (date) => {
+      if (!date) return '';
+      return date.toISOString().split('T')[0];
+    };
+
+    const showPage = (pageNum) => {
+      document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+      document.getElementById(`page${pageNum}`).classList.add('active');
+      currentPage = pageNum;
+      window.scrollTo(0, 0);
+    };
+
+    // PAGE 1: Load CSV Files
+    document.getElementById('loadBtn').addEventListener('click', () => {
+      const salesFile = document.getElementById('salesFile').files[0];
+      const mmaFile = document.getElementById('mmaFile').files[0];
+
+      if (!salesFile || !mmaFile) {
+        showStatus(1, 'Please upload both files', 'error');
+        return;
+      }
+
+      showStatus(1, 'Loading files...', 'info');
+
+      let salesCount = 0;
+      state.salesData = [];
+
+      Papa.parse(salesFile, {
+        header: true,
+        skipEmptyLines: true,
+        transformHeader: (h) => h.trim().replace(/^\uFEFF/, ''),
+        chunk: (results) => {
+          const cleaned = results.data.map(row => {
+            const cleanRow = {};
+            Object.keys(row).forEach(key => {
+              const cleanKey = key.trim().replace(/^\uFEFF/, '');
+              cleanRow[cleanKey] = row[key];
+            });
+            return cleanRow;
+          });
+          state.salesData = state.salesData.concat(cleaned);
+          salesCount += cleaned.length;
+        },
+        complete: () => {
+          Papa.parse(mmaFile, {
+            header: true,
+            skipEmptyLines: true,
+            transformHeader: (h) => h.trim().replace(/^\uFEFF/, ''),
+            complete: (results) => {
+              state.mmaData = results.data.map(row => {
+                const cleanRow = {};
+                Object.keys(row).forEach(key => {
+                  const cleanKey = key.trim().replace(/^\uFEFF/, '');
+                  cleanRow[cleanKey] = row[key];
+                });
+                return cleanRow;
+              });
+
+              showStatus(1, `✓ Loaded ${salesCount} sales + ${state.mmaData.length} MMA records`, 'success');
+            }
+          });
+        },
+        error: (e) => showStatus(1, `Error: ${e.message}`, 'error')
+      });
+    });
+
+    // PAGE 2: Next -> Go to Analyze (Page 3)
+    document.getElementById('nextBtn2').addEventListener('click', () => {
+      if (!state.mappedData || state.mappedData.length === 0) {
+        alert('Error: No data to analyze. Please check your files.');
+        return;
+      }
+      initializePage3();
+      showPage(3);
+    });
+
+    // PAGE 4: Initialize Filters & Pivot
+    function initializePage3() {
+      if (!state.mappedData || state.mappedData.length === 0) {
+        alert('Error: No data available. Please go back and reload the files.');
+        showPage(2);
+        return;
+      }
+
+      const firstRow = state.mappedData[0];
+      const allKeys = Object.keys(firstRow);
+      const catKey = allKeys.find(k => k.toLowerCase().includes('category') && k.toLowerCase().includes('nm')) || 'category_nm';
+      const varKey = allKeys.find(k => k.toLowerCase().includes('variable') && k.toLowerCase().includes('nm')) || 'target_variable_nm';
+      
+      const categories = catKey ? [...new Set(state.mappedData.map(r => r[catKey]).filter(Boolean))].sort() : [];
+      const variables = varKey ? [...new Set(state.mappedData.map(r => r[varKey]).filter(Boolean))].sort() : [];
+      const cellTypes = [...new Set(state.mappedData.map(r => r.cellType).filter(Boolean))].sort();
+      
+      console.log('=== PAGE 3 INIT ===');
+      console.log('Category key found:', catKey, ' | Variables key found:', varKey);
+      console.log('Categories found:', categories);
+      console.log('Variables found:', variables);
+      console.log('Cell types found:', cellTypes);
+
+      const catSelect = document.getElementById('categoryFilter');
+      // Keep the "All" option, remove rest
+      while (catSelect.options.length > 1) catSelect.remove(1);
+      categories.forEach(cat => {
+        const opt = document.createElement('option');
+        opt.value = cat;
+        opt.textContent = cat;
+        catSelect.appendChild(opt);
+      });
+
+      const varSelect = document.getElementById('variableFilter');
+      // Keep the "All" option, remove rest
+      while (varSelect.options.length > 1) varSelect.remove(1);
+      variables.forEach(v => {
+        const opt = document.createElement('option');
+        opt.value = v;
+        opt.textContent = v;
+        varSelect.appendChild(opt);
+      });
+
+      if (variables.length === 0) {
+        console.warn('Warning: No target variables found in data');
+      }
+      if (categories.length === 0) {
+        console.warn('Warning: No categories found in data');
+      }
+
+      // Populate control and treated selects with all cell types
+      const controlSelect = document.getElementById('controlCell');
+      const treatedSelect = document.getElementById('treatedCell');
+      // Clear existing options
+      controlSelect.innerHTML = '';
+      treatedSelect.innerHTML = '';
+      
+      cellTypes.forEach(ct => {
+        const opt1 = document.createElement('option');
+        opt1.value = ct;
+        opt1.textContent = ct;
+        controlSelect.appendChild(opt1);
+
+        const opt2 = document.createElement('option');
+        opt2.value = ct;
+        opt2.textContent = ct;
+        treatedSelect.appendChild(opt2);
+      });
+
+      // Set defaults
+      controlSelect.value = cellTypes.find(ct => ct.toLowerCase() === 'control') || cellTypes[0];
+      if (cellTypes.length > 1) {
+        treatedSelect.value = cellTypes.find(ct => ct.toLowerCase() === 'treated') || cellTypes[1];
+      }
+    }
+
+    // Calculate rolling factors
+    document.getElementById('calculateBtn').addEventListener('click', () => {
+      // Get and validate dates
+      const start = document.getElementById('startDate').value;
+      const end = document.getElementById('endDate').value;
+      const aaEnd = document.getElementById('aaEndDate').value;
+
+      if (!start || !end) {
+        alert('Please set Analysis Start Date and Analysis End Date');
+        return;
+      }
+
+      state.dateRange = {
+        start: parseDate(start),
+        end: parseDate(end),
+        aaEnd: aaEnd ? parseDate(aaEnd) : null
+      };
+
+      const controlCell = document.getElementById('controlCell').value;
+      const treatedCell = document.getElementById('treatedCell').value;
+      const cat = document.getElementById('categoryFilter').value;
+      const var_ = document.getElementById('variableFilter').value;
+
+      if (!controlCell || !treatedCell || controlCell === treatedCell) {
+        alert('Select different Control and Treated cell types');
+        return;
+      }
+
+      // Check if data exists
+      if (!state.mappedData || state.mappedData.length === 0) {
+        alert('Error: No data available. Please go back and reload the files.');
+        return;
+      }
+
+      // Find the correct column keys - specifically the NAME columns, not IDs
+      const firstRow = state.mappedData[0];
+      const allKeys = Object.keys(firstRow);
+      const catKey = allKeys.find(k => k.toLowerCase().includes('category') && k.toLowerCase().includes('nm'));
+      const varKey = allKeys.find(k => k.toLowerCase().includes('variable') && k.toLowerCase().includes('nm'));
+
+      console.log('=== ANALYZE FILTERING ===');
+      console.log('Category NAME column found:', catKey, 'Value:', cat);
+      console.log('Variable NAME column found:', varKey, 'Value:', var_);
+
+      // Filter data based on selections (optional filters - only use NAME columns)
+      let filtered = state.mappedData;
+      if (catKey && cat) filtered = filtered.filter(r => r[catKey] === cat);
+      if (varKey && var_) filtered = filtered.filter(r => r[varKey] === var_);
+
+      console.log('Filtered data count:', filtered.length);
+
+      state.filteredData = filtered;
+
+      // Build date map
+      const dateMap = {};
+      filtered.forEach(row => {
+        const date = row.day_transformed || row.day;
+        if (!dateMap[date]) dateMap[date] = {};
+        if (!dateMap[date][controlCell]) dateMap[date][controlCell] = 0;
+        if (!dateMap[date][treatedCell]) dateMap[date][treatedCell] = 0;
+        
+        if (row.cellType === controlCell) {
+          dateMap[date][controlCell] += parseFloat(row.orders) || 0;
+        } else if (row.cellType === treatedCell) {
+          dateMap[date][treatedCell] += parseFloat(row.orders) || 0;
+        }
+      });
+
+      const dates = Object.keys(dateMap).sort();
+      let filteredDates = dates;
+      if (state.dateRange.aaEnd) {
+        filteredDates = dates.filter(d => parseDate(d) <= state.dateRange.aaEnd);
+      }
+
+      const rollingData = [];
+
+      filteredDates.forEach((date, idx) => {
+        const treatedDaily = dateMap[date][treatedCell] || 0;
+        const controlDaily = dateMap[date][controlCell] || 0;
+        const dailyFactor = controlDaily > 0 ? (treatedDaily / controlDaily).toFixed(4) : '-';
+
+        let factor30 = '-';
+        let factor60 = '-';
+        let factor90 = '-';
+
+        // 30-day factor
+        if (idx >= 29) {
+          const range30 = filteredDates.slice(idx - 29, idx + 1);
+          let treated30 = 0, control30 = 0;
+          range30.forEach(d => {
+            treated30 += dateMap[d][treatedCell] || 0;
+            control30 += dateMap[d][controlCell] || 0;
+          });
+          factor30 = control30 > 0 ? (treated30 / control30).toFixed(4) : '-';
+        }
+
+        // 60-day factor
+        if (idx >= 59) {
+          const range60 = filteredDates.slice(idx - 59, idx + 1);
+          let treated60 = 0, control60 = 0;
+          range60.forEach(d => {
+            treated60 += dateMap[d][treatedCell] || 0;
+            control60 += dateMap[d][controlCell] || 0;
+          });
+          factor60 = control60 > 0 ? (treated60 / control60).toFixed(4) : '-';
+        }
+
+        // 90-day factor
+        if (idx >= 89) {
+          const range90 = filteredDates.slice(idx - 89, idx + 1);
+          let treated90 = 0, control90 = 0;
+          range90.forEach(d => {
+            treated90 += dateMap[d][treatedCell] || 0;
+            control90 += dateMap[d][controlCell] || 0;
+          });
+          factor90 = control90 > 0 ? (treated90 / control90).toFixed(4) : '-';
+        }
+
+        rollingData.push({
+          date,
+          treatedDaily: Math.round(treatedDaily),
+          controlDaily: Math.round(controlDaily),
+          dailyFactor,
+          factor30,
+          factor60,
+          factor90
+        });
+      });
+
+      state.rollingData = rollingData;
+      displayRollingTable(rollingData);
+      createHistograms(rollingData);
+      document.getElementById('rollingOutput').style.display = 'block';
+      window.scrollTo(0, document.getElementById('rollingOutput').offsetTop - 100);
+    });
+
+    function displayRollingTable(data) {
+      const tbody = document.getElementById('rollingTable').querySelector('tbody');
+      tbody.innerHTML = '';
+      data.forEach(row => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${row.date}</td>
+          <td style="text-align: right;">${row.treatedDaily.toLocaleString()}</td>
+          <td style="text-align: right;">${row.controlDaily.toLocaleString()}</td>
+          <td style="text-align: right;">${row.dailyFactor}</td>
+          <td style="text-align: right;">${row.factor30}</td>
+          <td style="text-align: right;">${row.factor60}</td>
+          <td style="text-align: right;">${row.factor90}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function createHistograms(data) {
+      // Extract valid factor values
+      const factor30Values = data.map(r => parseFloat(r.factor30)).filter(v => !isNaN(v));
+      const factor60Values = data.map(r => parseFloat(r.factor60)).filter(v => !isNaN(v));
+      const factor90Values = data.map(r => parseFloat(r.factor90)).filter(v => !isNaN(v));
+
+      // Create histogram for 30-day
+      createHistogramChart('chart30day', factor30Values, '30 Day', '#1e40af');
+      // Create histogram for 60-day
+      createHistogramChart('chart60day', factor60Values, '60 Day', '#16a34a');
+      // Create histogram for 90-day
+      createHistogramChart('chart90day', factor90Values, '90 Day', '#dc2626');
+    }
+
+    function createHistogramChart(canvasId, values, title, color) {
+      if (!values || values.length === 0) {
+        const ctx = document.getElementById(canvasId);
+        ctx.style.display = 'none';
+        const parent = ctx.parentElement;
+        const noDataDiv = document.createElement('div');
+        noDataDiv.style.display = 'flex';
+        noDataDiv.style.alignItems = 'center';
+        noDataDiv.style.justifyContent = 'center';
+        noDataDiv.style.height = '300px';
+        noDataDiv.style.color = '#999';
+        noDataDiv.textContent = 'No data available';
+        parent.appendChild(noDataDiv);
+        return;
+      }
+
+      // Calculate bins using Scott's normal reference rule (Excel's default for histograms)
+      const min = Math.min(...values);
+      const max = Math.max(...values);
+      const range = max - min || 1;
+      
+      // Calculate mean and standard deviation
+      const mean = values.reduce((a, b) => a + b, 0) / values.length;
+      const variance = values.reduce((sq, n) => sq + Math.pow(n - mean, 2), 0) / values.length;
+      const stdev = Math.sqrt(variance);
+      
+      // Scott's rule: Bin width = 3.5 × σ / ∛n
+      const n = values.length;
+      const roughWidth = (3.5 * stdev) / Math.cbrt(n);
+      
+      // Round to "nice" values like Excel does: 1, 2, 4, 5, 10, 20, 40, 50, etc.
+      const scale = Math.pow(10, Math.floor(Math.log10(roughWidth)));
+      const normalized = roughWidth / scale;
+      
+      let niceFraction;
+      if (normalized < 1.5) niceFraction = 1;
+      else if (normalized < 3) niceFraction = 2;
+      else if (normalized <= 4.5) niceFraction = 4;  // Prefer 4 over 5
+      else if (normalized < 7.5) niceFraction = 5;
+      else niceFraction = 10;
+      
+      const binSize = niceFraction * scale;
+      
+      // Calculate bin count based on nice width
+      const binCount = Math.ceil(range / binSize) + 1;
+      
+      // Align bins to start from 0 (not from min), so all values align consistently
+      const binStart = Math.floor(min / binSize) * binSize;
+      
+      // Excel snaps to a "nice" grid: when width=0.04, snap to 0.01; when width=0.1, snap to 0.01, etc.
+      // The snap grid is typically 1/4 of the bin width or the scale itself
+      const snapGrid = Math.pow(10, Math.floor(Math.log10(binSize)));
+      const snappedStart = Math.floor(min / snapGrid) * snapGrid;
+
+      // Create bins with nice boundaries
+      const bins = {};
+      const binLabels = [];
+      for (let i = 0; i < binCount; i++) {
+        const binLower = snappedStart + i * binSize;
+        const binUpper = binLower + binSize;
+        const label = `${binLower.toFixed(3)}-${binUpper.toFixed(3)}`;
+        binLabels.push(label);
+        bins[label] = 0;
+      }
+
+      // Count values in each bin
+      values.forEach(val => {
+        for (let i = 0; i < binCount; i++) {
+          const binLower = snappedStart + i * binSize;
+          const binUpper = binLower + binSize;
+          if (val >= binLower && (i === binCount - 1 ? val <= binUpper : val < binUpper)) {
+            bins[binLabels[i]]++;
+            break;
+          }
+        }
+      });
+
+      // Calculate max frequency and find peak bin
+      const frequencies = binLabels.map(label => bins[label]);
+      const maxFrequency = Math.max(...frequencies);
+      const peakBinIndex = frequencies.indexOf(maxFrequency);
+      const peakRange = binLabels[peakBinIndex];
+
+      const ctx = document.getElementById(canvasId).getContext('2d');
+      
+      // Destroy existing chart if it exists
+      if (window.histogramCharts && window.histogramCharts[canvasId]) {
+        window.histogramCharts[canvasId].destroy();
+      }
+      
+      if (!window.histogramCharts) window.histogramCharts = {};
+      
+      window.histogramCharts[canvasId] = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: binLabels,
+          datasets: [{
+            label: 'Frequency',
+            data: frequencies,
+            backgroundColor: color,
+            borderColor: color,
+            borderWidth: 0
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: true,
+          indexAxis: undefined,
+          plugins: {
+            title: {
+              display: true,
+              text: [title, `Peak Factor Range: ${peakRange} | Frequency: ${maxFrequency}`],
+              font: { size: 14, weight: 'bold' },
+              padding: { bottom: 15 }
+            },
+            legend: { display: false },
+            tooltip: {
+              enabled: true,
+              backgroundColor: 'rgba(0, 0, 0, 0.8)',
+              padding: 12,
+              titleFont: { size: 12, weight: 'bold' },
+              bodyFont: { size: 12 },
+              borderColor: color,
+              borderWidth: 2,
+              displayColors: false,
+              callbacks: {
+                title: function(context) {
+                  return 'Range: ' + context[0].label;
+                },
+                label: function(context) {
+                  return 'Count: ' + context.parsed.y;
+                }
+              }
+            }
+          },
+          scales: {
+            y: {
+              beginAtZero: true,
+              ticks: { stepSize: 1 },
+              grid: { color: '#f0f0f0' }
+            },
+            x: { 
+              grid: { display: false },
+              ticks: { display: false }
+            }
+          }
+        }
+      });
+    }
+
+    document.getElementById('downloadRolling').addEventListener('click', () => {
+      if (!state.rollingData) return;
+      const controlCell = document.getElementById('controlCell').value;
+      const treatedCell = document.getElementById('treatedCell').value;
+      const csv = [
+        ['Date', `${treatedCell} Daily`, `${controlCell} Daily`, 'Daily Factor', '30-Day Factor', '60-Day Factor', '90-Day Factor'].join(','),
+        ...state.rollingData.map(r => [r.date, r.treatedDaily, r.controlDaily, r.dailyFactor, r.factor30, r.factor60, r.factor90].join(','))
+      ].join('\n');
+      const filename = `rolling_factors_${treatedCell}_vs_${controlCell}_${new Date().toISOString().split('T')[0]}.csv`;
+      downloadFile(csv, filename);
+    });
+
+    document.getElementById('downloadPivot').addEventListener('click', () => {
+      if (!state.filteredData || state.filteredData.length === 0) {
+        alert('Please run Analyze first');
+        return;
+      }
+      const cols = Object.keys(state.filteredData[0]);
+      const csv = [cols.join(','), ...state.filteredData.map(r => cols.map(c => {
+        const val = r[c];
+        return typeof val === 'string' && val.includes(',') ? `"${val}"` : val;
+      }).join(','))].join('\n');
+      downloadFile(csv, `filtered_data_${new Date().toISOString().split('T')[0]}.csv`);
+    });
+
+    function downloadFile(content, filename) {
+      const blob = new Blob([content], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    }
+
+    // Navigation - Page 1 to Page 2
+    document.getElementById('nextBtn1').addEventListener('click', () => {
+      if (!state.salesData || !state.mmaData) {
+        alert('Error: Files not loaded. Please upload both CSV files first.');
+        return;
+      }
+
+      // Transform dates
+      state.salesData = state.salesData.map(row => {
+        if (row.day) {
+          const parsed = parseDate(row.day);
+          if (parsed) {
+            row.day_transformed = formatDate(parsed);
+            row.day_date = parsed;
+          }
+        }
+        return row;
+      });
+
+      // Map to MMA
+      // Build two lookup maps: one for locationCode, one for dmaCode
+      const locationCodeMap = {};  // For COMSCORE_MARKET
+      const dmaCodeMap = {};        // For DMA
+
+      state.mmaData.forEach(row => {
+        if (row.locationCode) {
+          locationCodeMap[row.locationCode] = row.cellType;
+        }
+        if (row.dmaCode) {
+          dmaCodeMap[row.dmaCode] = row.cellType;
+        }
+      });
+
+      console.log('=== MAPPING SETUP ===');
+      console.log('locationCodeMap:', locationCodeMap);
+      console.log('dmaCodeMap:', dmaCodeMap);
+
+      // Map sales data to cellType based on random_location_type
+      state.mappedData = state.salesData.map(row => {
+        const locationType = row.random_location_type || 'UNKNOWN';
+        const geoId = row.geo_id;
+        
+        if (locationType === 'COMSCORE_MARKET') {
+          // Lookup by locationCode
+          row.cellType = locationCodeMap[geoId] || 'Unmapped';
+          row.mappingType = 'COMSCORE_MARKET→locationCode';
+        } else if (locationType === 'DMA') {
+          // Lookup by dmaCode
+          row.cellType = dmaCodeMap[geoId] || 'Unmapped';
+          row.mappingType = 'DMA→dmaCode';
+        } else {
+          row.cellType = 'Unmapped';
+          row.mappingType = 'Unknown type';
+        }
+        
+        return row;
+      });
+
+      console.log('=== MAPPING RESULTS ===');
+      console.log('Sample mapped rows:', state.mappedData.slice(0, 3));
+      console.log('Mapped counts:', {
+        total: state.mappedData.length,
+        mapped: state.mappedData.filter(r => r.cellType !== 'Unmapped').length,
+        unmapped: state.mappedData.filter(r => r.cellType === 'Unmapped').length
+      });
+
+      if (!state.mappedData || state.mappedData.length === 0) {
+        alert('Error: Failed to map data. Please check your files.');
+        return;
+      }
+
+      // DEBUG: Log data structure
+      console.log('=== DATA DEBUG ===');
+      console.log('First row of salesData:', state.salesData[0]);
+      console.log('First row of mappedData:', state.mappedData[0]);
+      console.log('All keys in first row:', Object.keys(state.mappedData[0]));
+      
+      // Populate preview table
+      const salesCols = state.salesData.length > 0 ? Object.keys(state.salesData[0]) : [];
+      const mmaCols = state.mmaData.length > 0 ? Object.keys(state.mmaData[0]) : [];
+
+      console.log('Sales Columns:', salesCols);
+      console.log('MMA Columns:', mmaCols);
+
+      document.getElementById('salesColsPreview').textContent = salesCols.join(', ');
+      document.getElementById('mmaColsPreview').textContent = mmaCols.join(', ');
+
+      const table = document.getElementById('previewTable');
+      const thead = table.querySelector('thead tr');
+      const tbody = table.querySelector('tbody');
+
+      thead.innerHTML = '';
+      salesCols.forEach(col => {
+        const th = document.createElement('th');
+        th.textContent = col;
+        th.style.padding = '8px 10px';
+        th.style.textAlign = 'left';
+        th.style.fontWeight = '600';
+        th.style.borderRight = '1px solid #e0e0e0';
+        th.style.whiteSpace = 'nowrap';
+        th.style.background = '#f9f9f9';
+        thead.appendChild(th);
+      });
+
+      tbody.innerHTML = '';
+      state.salesData.slice(0, 5).forEach(row => {
+        const tr = document.createElement('tr');
+        salesCols.forEach(col => {
+          const td = document.createElement('td');
+          td.textContent = String(row[col] || '').substring(0, 50);
+          td.style.padding = '8px 10px';
+          td.style.borderRight = '1px solid #e0e0e0';
+          td.style.borderBottom = '1px solid #f0f0f0';
+          tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+      });
+
+      // Show mapping status by location type
+      const unmappedCount = state.mappedData.filter(r => r.cellType === 'Unmapped').length;
+      const mappedCount = state.mappedData.filter(r => r.cellType !== 'Unmapped').length;
+
+      const mappingStatusText = `
+        DMA: Mapped ${mappedCount} | Unmapped ${unmappedCount}
+      `;
+      
+      document.getElementById('mappingStatus').textContent = mappingStatusText;
+
+      // Show extracted categories and variables
+      // Try to find category and variable columns - specifically the NAME columns, not IDs
+      const firstRow = state.mappedData[0];
+      const allKeys = Object.keys(firstRow);
+      const catKey = allKeys.find(k => k.toLowerCase().includes('category') && k.toLowerCase().includes('nm')) || 'category_nm';
+      const varKey = allKeys.find(k => k.toLowerCase().includes('variable') && k.toLowerCase().includes('nm')) || 'target_variable_nm';
+      
+      console.log('=== COLUMN NAME RESOLUTION ===');
+      console.log('All available keys:', allKeys);
+      console.log('Looking for category NAME column - found:', catKey);
+      console.log('Looking for variable NAME column - found:', varKey);
+
+      const categories = catKey ? [...new Set(state.mappedData.map(r => r[catKey]).filter(Boolean))].sort() : [];
+      const variables = varKey ? [...new Set(state.mappedData.map(r => r[varKey]).filter(Boolean))].sort() : [];
+
+      console.log('=== CATEGORIES & VARIABLES ===');
+      console.log('Sample category values:', catKey ? state.mappedData.map(r => r[catKey]).slice(0, 10) : []);
+      console.log('Sample variable values:', varKey ? state.mappedData.map(r => r[varKey]).slice(0, 10) : []);
+      console.log('Unique categories:', categories);
+      console.log('Unique variables:', variables);
+
+      const catPreview = document.getElementById('categoriesPreview');
+      const varPreview = document.getElementById('variablesPreview');
+      
+      if (catPreview) {
+        catPreview.textContent = categories.length > 0 ? categories.join(', ') : 'No categories found';
+      } else {
+        console.error('Element categoriesPreview not found');
+      }
+      
+      if (varPreview) {
+        varPreview.textContent = variables.length > 0 ? variables.join(', ') : 'No target variables found';
+      } else {
+        console.error('Element variablesPreview not found');
+      }
+
+      showPage(2);
+    });
+
+    document.getElementById('backBtn2').addEventListener('click', () => showPage(1));
+    document.getElementById('backBtn3').addEventListener('click', () => showPage(2));
+  </script>
+  </main>
+</body>
+</html>
