@@ -364,8 +364,12 @@ td.highlight { background: rgba(20,184,166,.05); }
   font-size: .68rem;
   font-weight: 600;
 }
-.tag-control { background: rgba(139,92,246,.15); color: var(--accent2); }
-.tag-treated { background: rgba(20,184,166,.12); color: var(--accent); }
+.tag-baseline { background: rgba(139,92,246,.15); color: var(--accent2); }
+.tag-arm0 { background: rgba(20,184,166,.12); color: var(--accent); }
+.tag-arm1 { background: rgba(245,158,11,.12); color: var(--warn); }
+.tag-arm2 { background: rgba(99,102,241,.15); color: #6366f1; }
+.tag-arm3 { background: rgba(236,72,153,.13); color: #ec4899; }
+.tag-arm4 { background: rgba(6,182,212,.13); color: #06b6d4; }
 .tag-outlier { background: rgba(245,158,11,.12); color: var(--warn); }
 .tag-unused  { background: rgba(90,96,128,.12); color: var(--muted); }
 .tag-AA      { background: rgba(245,158,11,.12); color: var(--warn); }
@@ -514,6 +518,22 @@ td.highlight { background: rgba(20,184,166,.05); }
 .upload-card { box-shadow: 0 1px 2px rgba(16,24,40,.03); }
 .btn-process { box-shadow: 0 1px 2px rgba(20,184,166,.2); }
 
+/* ── Role map panel ──────────────────────────────────────────────────────── */
+.role-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 16px;
+  border: 1px solid var(--border2);
+  border-radius: 8px;
+  background: var(--surface);
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+.role-row .role-tag { min-width: 84px; }
+.role-row select.tctl-input { min-width: 190px; }
+.role-exclude { font-family: var(--mono); font-size: .72rem; color: var(--muted); display: flex; align-items: center; gap: 6px; margin-left: auto; }
+
 /* ── Hidden ──────────────────────────────────────────────────────────────── */
 .hidden { display: none !important; }
 </style>
@@ -560,7 +580,7 @@ td.highlight { background: rgba(20,184,166,.05); }
       <input type="file" accept=".csv" id="file-cells" onchange="handleFile('cells', this)">
       <div class="upload-icon">🗂</div>
       <div class="upload-label">Cells Mapping</div>
-      <div class="upload-desc">DMA → cell number &amp; type.<br>Must include <code>DMA ID</code>, <code>Cell Number</code>.</div>
+      <div class="upload-desc">DMA → cell number &amp; type.<br>Needs a cell number, cell type &amp; location/DMA ID column — column names are auto-detected.</div>
       <div class="upload-status" id="status-cells">No file selected</div>
     </div>
 
@@ -568,14 +588,29 @@ td.highlight { background: rgba(20,184,166,.05); }
       <input type="file" accept=".csv" id="file-matched" onchange="handleFile('matched', this)">
       <div class="upload-icon">🔗</div>
       <div class="upload-label">Matched Markets</div>
-      <div class="upload-desc">Control/treatment DMA pairs.<br>Must include <code>Control DMA ID</code>.</div>
+      <div class="upload-desc">Baseline/treatment DMA pairs, one column per cell.<br>At least 2 columns of DMA IDs.</div>
       <div class="upload-status" id="status-matched">No file selected</div>
     </div>
 
   </div>
 
+  <!-- Step 1b: Map Cell Roles -->
+  <div id="role-map-section" style="display:none;">
+    <div class="section-label"><span class="section-num">02</span> Map Cell Roles</div>
+    <div style="font-family:var(--mono);font-size:.78rem;color:var(--muted);margin-bottom:16px;">
+      Tell us which cell is the baseline and which Matched Markets column holds each cell's DMA IDs.
+    </div>
+    <div class="role-row">
+      <span class="tag tag-baseline role-tag">baseline</span>
+      <select class="tctl-input" id="role-baseline-type" onchange="onBaselineTypeChange()"></select>
+      <span style="font-family:var(--mono);font-size:.72rem;color:var(--muted);">DMA ID column</span>
+      <select class="tctl-input" id="role-baseline-col" onchange="onRoleFieldChange()"></select>
+    </div>
+    <div id="role-arm-rows"></div>
+  </div>
+
   <!-- Step 2: Configure -->
-  <div class="section-label"><span class="section-num">02</span> Experiment Dates</div>
+  <div class="section-label"><span class="section-num">03</span> Experiment Dates</div>
   <div class="date-row">
     <div class="date-field">
       <label>Experiment Start (AB)</label>
@@ -612,8 +647,8 @@ td.highlight { background: rgba(20,184,166,.05); }
         </table>
       </div>
     </div>
-    <div style="font-family:var(--mono);font-size:.65rem;color:var(--muted);margin-bottom:36px;">
-      Factor value = treated orders ÷ control orders &nbsp;·&nbsp; control AA &amp; AB are factored &nbsp;·&nbsp; lift = treated AB − factored control AB
+    <div id="summary-footnote" style="font-family:var(--mono);font-size:.65rem;color:var(--muted);margin-bottom:36px;">
+      Factor value = arm orders ÷ baseline orders &nbsp;·&nbsp; baseline AA &amp; AB shown raw (unfactored) &nbsp;·&nbsp; lift = arm AB − factored baseline AB
     </div>
 
     <div class="section-label"><span class="section-num">03b</span> Lift by Window — AB vs AC</div>
@@ -650,8 +685,8 @@ td.highlight { background: rgba(20,184,166,.05); }
         </table>
       </div>
     </div>
-    <div style="font-family:var(--mono);font-size:.65rem;color:var(--muted);margin-bottom:36px;">
-      Control AA &amp; AB are factored · Lift = treated AB − factored control AB · Lift % = lift ÷ factored control AB
+    <div id="geo-footnote" style="font-family:var(--mono);font-size:.65rem;color:var(--muted);margin-bottom:36px;">
+      Baseline AA &amp; AB shown raw · each arm's AA &amp; AB are factored · Lift = arm AB − factored baseline AB · Lift % = lift ÷ factored baseline AB
     </div>
   </div>
 
@@ -667,18 +702,19 @@ td.highlight { background: rgba(20,184,166,.05); }
         </table>
       </div>
     </div>
-    <div style="font-family:var(--mono);font-size:.65rem;color:var(--muted);margin-bottom:36px;">
-      Factor value = cumulative treated ÷ cumulative control · resets at AA start and AB start · color = distance from 1.0
+    <div id="daily-footnote" style="font-family:var(--mono);font-size:.65rem;color:var(--muted);margin-bottom:36px;">
+      Factor value = cumulative arm ÷ cumulative baseline · resets at AA start and AB start · color = distance from 1.0
     </div>
   </div>
 
   <!-- TAB: Cumulative Lift -->
   <div id="tab-cumlift" class="hidden">
     <div class="section-label"><span class="section-num">06</span> Lift</div>
+    <div id="cumlift-arm-tabs" style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;"></div>
     <div id="cumlift-segment-tabs" style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;"></div>
     <div id="cumlift-body"></div>
-    <div style="font-family:var(--mono);font-size:.65rem;color:var(--muted);margin:10px 0 36px;">
-      Control is factored by the fixed base AA factor (treated AA ÷ control AA) — held constant across every day, not recomputed daily ·
+    <div id="cumlift-footnote" style="font-family:var(--mono);font-size:.65rem;color:var(--muted);margin:10px 0 36px;">
+      Baseline is factored by the fixed base AA factor (arm AA ÷ baseline AA) — held constant across every day, not recomputed daily ·
       <span style="color:#6366f1">AC</span> = days after the AB end through the AC end date (or open-ended if blank) ·
       <b>Cumulative</b> shows total magnitude; <b>Rolling</b> shows the daily lift rate — for mail, the rolling curve reveals the in-home lag
       (lift lifts off zero after drop) and the decay (returns to zero in AC)
@@ -706,10 +742,6 @@ td.highlight { background: rgba(20,184,166,.05); }
       <span class="tctl-label">Cell Type
         <select class="tctl-input" id="tbl-cell" onchange="applyFilters()">
           <option value="">All</option>
-          <option value="control">control</option>
-          <option value="treated">treated</option>
-          <option value="outlier">outlier</option>
-          <option value="unused">unused</option>
         </select>
       </span>
       <span class="row-count" id="row-count"></span>
@@ -729,11 +761,24 @@ td.highlight { background: rgba(20,184,166,.05); }
 
 <script>
 // ── State ─────────────────────────────────────────────────────────────────────
-const state = { sales: null, cells: null, matched: null };
+const state = { sales: null, cells: null, matched: null, cellsCols: null };
+state.roleMap = { baseline: { cellType: '', idCol: '' }, arms: [] };
 let mergedRows = [];
 let filteredRows = [];
 let currentPage = 0;
 const PAGE_SIZE = 100;
+
+function baselineType() { return state.roleMap.baseline.cellType; }
+function armTypes() { return state.roleMap.arms.map(a => a.cellType); }
+function isAnalyzedType(ct) { return ct === baselineType() || armTypes().includes(ct); }
+function tagClassFor(ct) {
+  if (ct === baselineType()) return 'tag-baseline';
+  const i = armTypes().indexOf(ct);
+  return i >= 0 ? `tag-arm${i}` : 'tag-outlier';
+}
+// Factors are per (segment, arm) now that a file can have 2+ treatment arms,
+// each with its own AA-period ratio vs the shared baseline.
+function factorKey(seg, arm) { return `${seg}||${arm}`; }
 
 const DISPLAY_COLS = [
   'day','geo_id','DMA','period','cell','cell_type','pair',
@@ -767,12 +812,45 @@ function parseCSV(text) {
 // merging into all-zero results.
 const REQUIRED_COLS = {
   sales:   ['geo_id', 'day'],
-  cells:   ['cellNum', 'cellType'],
-  matched: ['Control DMA ID']
+  cells:   [],
+  matched: []
 };
-// cells rows also need an id column to join on — checked separately since
-// either locationId or dmaCode satisfies it.
-const CELLS_ID_COLS = ['locationId', 'dmaCode'];
+
+// The Cells file's headers vary by export (e.g. "Cell Number" vs "cellNum" vs
+// "Cell #"). Resolve each logical field to whichever actual header matches
+// best, instead of requiring an exact name. Each header can only be claimed
+// by one field, checked in this priority order, so e.g. a "DMA Name" header
+// isn't grabbed by dmaCode before locationName gets a look at it.
+const CELLS_FIELD_ALIASES = {
+  cellNum:      ['cellnum', 'cellnumber', 'cellno', 'cellid', 'cell'],
+  cellType:     ['celltype', 'cellgroup', 'type', 'group', 'arm', 'role'],
+  locationId:   ['locationid', 'geoid', 'locid', 'location'],
+  dmaCode:      ['dmacode', 'dmaid', 'dma'],
+  locationName: ['locationname', 'dmaname', 'marketname', 'market', 'metro', 'name']
+};
+const CELLS_FIELD_ORDER = ['cellNum', 'cellType', 'locationId', 'dmaCode', 'locationName'];
+
+function resolveCellsColumns(headers) {
+  const avail = headers.map(h => ({ h, n: normKey(h) }));
+  const claimed = new Set();
+  const result = {};
+  CELLS_FIELD_ORDER.forEach(field => {
+    let best = null, bestScore = -1;
+    avail.forEach(({ h, n }) => {
+      if (claimed.has(h) || !n) return;
+      CELLS_FIELD_ALIASES[field].forEach(a => {
+        let score = -1;
+        if (n === a) score = 100 + a.length;
+        else if (a.length >= 4 && n.includes(a)) score = 50 + a.length;
+        else if (n.length >= 3 && a.includes(n)) score = 10 + n.length;
+        if (score > bestScore) { bestScore = score; best = h; }
+      });
+    });
+    result[field] = best || '';
+    if (best) claimed.add(best);
+  });
+  return result;
+}
 
 function handleFile(type, input) {
   const file = input.files[0];
@@ -788,26 +866,166 @@ function handleFile(type, input) {
       }
       const headers = Object.keys(rows[0]);
       const missing = REQUIRED_COLS[type].filter(c => !headers.includes(c));
-      if (type === 'cells' && !CELLS_ID_COLS.some(c => headers.includes(c))) {
-        missing.push(`one of (${CELLS_ID_COLS.join(' / ')})`);
+      let cellsCols = null;
+      if (type === 'cells') {
+        cellsCols = resolveCellsColumns(headers);
+        if (!cellsCols.cellNum)  missing.push('a cell number column');
+        if (!cellsCols.cellType) missing.push('a cell type column');
+        if (!cellsCols.locationId && !cellsCols.dmaCode) missing.push('a location/DMA ID column');
+      }
+      if (type === 'matched' && headers.length < 2) {
+        missing.push('at least 2 columns (one per cell\'s DMA ID)');
       }
       if (missing.length) {
         throw new Error(`missing required column${missing.length > 1 ? 's' : ''}: ${missing.join(', ')}`);
       }
       state[type] = rows;
-      statusEl.textContent = `✓ ${rows.length.toLocaleString()} rows · ${headers.length} cols`;
+      if (type === 'cells') {
+        state.cellsCols = cellsCols;
+        const detected = CELLS_FIELD_ORDER.filter(f => cellsCols[f]).map(f => cellsCols[f]).join(', ');
+        statusEl.textContent = `✓ ${rows.length.toLocaleString()} rows · using: ${detected}`;
+      } else {
+        statusEl.textContent = `✓ ${rows.length.toLocaleString()} rows · ${headers.length} cols`;
+      }
       statusEl.className = 'upload-status';
       cardEl.classList.add('loaded');
+      refreshRoleMapUI();
       checkReady();
     } catch(err) {
       state[type] = null;
+      if (type === 'cells') state.cellsCols = null;
       cardEl.classList.remove('loaded');
       statusEl.textContent = '✗ ' + err.message;
       statusEl.className = 'upload-status error';
+      refreshRoleMapUI();
       checkReady();
     }
   };
   reader.readAsText(file);
+}
+
+// ── Role map (baseline / arm cell-type assignment) ────────────────────────────
+function normKey(s) { return String(s == null ? '' : s).toLowerCase().replace(/[^a-z0-9]/g, ''); }
+
+function distinctCellTypes() {
+  if (!state.cells || !state.cellsCols) return [];
+  const set = new Set();
+  state.cells.forEach(r => {
+    const ct = (r[state.cellsCols.cellType] || '').toLowerCase().trim();
+    if (ct) set.add(ct);
+  });
+  return [...set];
+}
+
+function matchedHeaders() {
+  return (state.matched && state.matched.length) ? Object.keys(state.matched[0]) : [];
+}
+
+function guessIdCol(cellType, headers) {
+  const nct = normKey(cellType);
+  if (!nct) return '';
+  const found = headers.find(h => {
+    const nh = normKey(h);
+    return nh.includes(nct) || nct.includes(nh);
+  });
+  return found || '';
+}
+
+function refreshRoleMapUI() {
+  const section = document.getElementById('role-map-section');
+  if (!state.cells || !state.matched) {
+    section.style.display = 'none';
+    return;
+  }
+  section.style.display = '';
+
+  const types = distinctCellTypes();
+  const headers = matchedHeaders();
+
+  // Keep existing baseline choice if still valid, else default to first type.
+  if (!types.includes(state.roleMap.baseline.cellType)) {
+    state.roleMap.baseline.cellType = types[0] || '';
+    state.roleMap.baseline.idCol = '';
+  }
+
+  const baselineSel = document.getElementById('role-baseline-type');
+  baselineSel.innerHTML = types.map(t => `<option value="${t}"${t === state.roleMap.baseline.cellType ? ' selected' : ''}>${t}</option>`).join('');
+
+  const colSel = document.getElementById('role-baseline-col');
+  if (!state.roleMap.baseline.idCol || !headers.includes(state.roleMap.baseline.idCol)) {
+    state.roleMap.baseline.idCol = guessIdCol(state.roleMap.baseline.cellType, headers);
+  }
+  colSel.innerHTML = '<option value="">— choose column —</option>' +
+    headers.map(h => `<option value="${h}"${h === state.roleMap.baseline.idCol ? ' selected' : ''}>${h}</option>`).join('');
+
+  rebuildArmRows();
+  checkReady();
+}
+
+function onBaselineTypeChange() {
+  state.roleMap.baseline.cellType = document.getElementById('role-baseline-type').value;
+  state.roleMap.baseline.idCol = guessIdCol(state.roleMap.baseline.cellType, matchedHeaders());
+  const colSel = document.getElementById('role-baseline-col');
+  const headers = matchedHeaders();
+  colSel.innerHTML = '<option value="">— choose column —</option>' +
+    headers.map(h => `<option value="${h}"${h === state.roleMap.baseline.idCol ? ' selected' : ''}>${h}</option>`).join('');
+  rebuildArmRows();
+  checkReady();
+}
+
+function onRoleFieldChange() {
+  state.roleMap.baseline.idCol = document.getElementById('role-baseline-col').value;
+  checkReady();
+}
+
+// UI-level row state (includes excluded rows); state.roleMap.arms is derived
+// from this and only ever holds the INCLUDED arms, per the roleMap contract.
+let armRowState = [];
+
+function rebuildArmRows() {
+  const types = distinctCellTypes().filter(t => t !== state.roleMap.baseline.cellType);
+  const headers = matchedHeaders();
+  const prev = {};
+  armRowState.forEach(a => { prev[a.cellType] = a; });
+
+  armRowState = types.map(t => {
+    const p = prev[t];
+    return {
+      cellType: t,
+      idCol: p && headers.includes(p.idCol) ? p.idCol : guessIdCol(t, headers),
+      excluded: p ? !!p.excluded : false
+    };
+  });
+
+  document.getElementById('role-arm-rows').innerHTML = armRowState.map((a, i) => `
+    <div class="role-row">
+      <span class="tag tag-arm${i} role-tag">${a.cellType}</span>
+      <span style="font-family:var(--mono);font-size:.72rem;color:var(--muted);">DMA ID column</span>
+      <select class="tctl-input" onchange="onArmColChange(${i}, this.value)" ${a.excluded ? 'disabled' : ''}>
+        <option value="">— choose column —</option>
+        ${headers.map(h => `<option value="${h}"${h === a.idCol ? ' selected' : ''}>${h}</option>`).join('')}
+      </select>
+      <label class="role-exclude"><input type="checkbox" onchange="onArmExcludeChange(${i}, this.checked)" ${a.excluded ? 'checked' : ''}> exclude this arm</label>
+    </div>
+  `).join('');
+
+  syncRoleMapArms();
+}
+
+function syncRoleMapArms() {
+  state.roleMap.arms = armRowState.filter(a => !a.excluded).map(a => ({ cellType: a.cellType, idCol: a.idCol }));
+}
+
+function onArmColChange(i, val) {
+  armRowState[i].idCol = val;
+  syncRoleMapArms();
+  checkReady();
+}
+
+function onArmExcludeChange(i, checked) {
+  armRowState[i].excluded = checked;
+  rebuildArmRows();
+  checkReady();
 }
 
 // ── Date preview ──────────────────────────────────────────────────────────────
@@ -833,7 +1051,10 @@ function updateDatePreview() {
 function checkReady() {
   const s = document.getElementById('exp-start').value;
   const e = document.getElementById('exp-end').value;
-  const ready = state.sales && state.cells && state.matched && s && e;
+  const rm = state.roleMap;
+  const roleReady = !!(rm.baseline.cellType && rm.baseline.idCol &&
+    rm.arms.length > 0 && rm.arms.every(a => a.cellType && a.idCol));
+  const ready = state.sales && state.cells && state.matched && s && e && roleReady;
   document.getElementById('btn-process').disabled = !ready;
 }
 
@@ -860,27 +1081,29 @@ function switchTab(name) {
 let excludedPairs = new Set();
 
 function buildPairFilter(rows) {
-  // Build pair -> { control DMA, treated DMA } lookup
+  // Build pair -> { [cell_type]: DMA } lookup
   const pairDMAs = {};
   rows.forEach(r => {
     if (!r.pair) return;
+    if (!isAnalyzedType(r.cell_type)) return;
     const p = String(r.pair);
-    if (!pairDMAs[p]) pairDMAs[p] = { control: '', treated: '' };
-    if (r.cell_type === 'control' && !pairDMAs[p].control)   pairDMAs[p].control  = r.DMA || r.geo_id;
-    if (r.cell_type === 'treated' && !pairDMAs[p].treated)   pairDMAs[p].treated  = r.DMA || r.geo_id;
+    if (!pairDMAs[p]) pairDMAs[p] = {};
+    if (!pairDMAs[p][r.cell_type]) pairDMAs[p][r.cell_type] = r.DMA || r.geo_id;
   });
 
   const pairs = Object.keys(pairDMAs).sort((a, b) => parseInt(a) - parseInt(b));
   excludedPairs = new Set();
 
+  const bType = baselineType();
+  const arms = armTypes();
+
   document.getElementById('pair-filter-chips').innerHTML = pairs.map(p => {
-    const ctrl  = pairDMAs[p].control  || '—';
-    const treat = pairDMAs[p].treated  || '—';
+    const baseDMA = pairDMAs[p][bType] || '—';
+    const armParts = arms.map(a => `<span style="color:var(--muted);margin:0 4px;">vs</span><span style="color:#14b8a6">${a}: ${pairDMAs[p][a] || '—'}</span>`).join('');
     return `<button class="pair-chip active" id="chip-${p}" onclick="togglePair('${p}')">
       <span style="color:var(--muted);margin-right:5px;">#${p}</span>
-      <span style="color:#8b5cf6">${ctrl}</span>
-      <span style="color:var(--muted);margin:0 4px;">vs</span>
-      <span style="color:#14b8a6">${treat}</span>
+      <span style="color:#8b5cf6">${bType}: ${baseDMA}</span>
+      ${armParts}
     </button>`;
   }).join('');
 }
@@ -941,30 +1164,35 @@ function processData() {
       return s;
     };
 
-    // -- Build cells lookup. The cells file uses locationId/cellNum/cellType/
-    //    locationName/dmaCode headers. Key by BOTH locationId and dmaCode
-    //    (normalized) so it matches sales.geo_id whichever id form that file uses.
+    // -- Build cells lookup. Column names were resolved from whatever headers
+    //    the file actually uses (see resolveCellsColumns). Key by BOTH the id
+    //    and dma-code columns (normalized) so it matches sales.geo_id whichever
+    //    id form that file uses.
+    const cc = state.cellsCols;
     const cellsLookup = {};
     state.cells.forEach(r => {
       const info = {
-        cell:              r['cellNum'] || '',
-        cell_type:         (r['cellType'] || '').toLowerCase().trim(),
-        DMA:               r['locationName'] || '',
+        cell:              (cc.cellNum ? r[cc.cellNum] : '') || '',
+        cell_type:         ((cc.cellType ? r[cc.cellType] : '') || '').toLowerCase().trim(),
+        DMA:               (cc.locationName ? r[cc.locationName] : '') || '',
         pct_of_sales_cell: ''   // no % column in this file
       };
-      [normId(r['locationId']), normId(r['dmaCode'])].forEach(k => {
+      [normId(cc.locationId ? r[cc.locationId] : ''), normId(cc.dmaCode ? r[cc.dmaCode] : '')].forEach(k => {
         if (k !== '') cellsLookup[k] = info;
       });
     });
 
     // -- Build pair lookup: normalized DMA id -> pair number
+    // Pairing doesn't care about role, only which columns hold DMA ids, so this
+    // naturally handles any number of arms.
+    const idCols = [state.roleMap.baseline, ...state.roleMap.arms].map(c => c.idCol);
     const pairLookup = {};
     state.matched.forEach((r, i) => {
-      const ctrl  = normId(r['Control DMA ID']);
-      const treat = normId(r['Treatment DMA ID']);
       const pairNum = i + 1;
-      if (ctrl  !== '') pairLookup[ctrl]  = pairNum;
-      if (treat !== '') pairLookup[treat] = pairNum;
+      idCols.forEach(col => {
+        const id = normId(r[col]);
+        if (id !== '') pairLookup[id] = pairNum;
+      });
     });
 
     // -- Assign period
@@ -1015,6 +1243,11 @@ function processData() {
     });
 
 
+
+    // -- Populate the Full Dataset cell-type filter with whatever types are present
+    const presentTypes = [...new Set(mergedRows.map(r => r.cell_type).filter(Boolean))].sort();
+    document.getElementById('tbl-cell').innerHTML =
+      '<option value="">All</option>' + presentTypes.map(t => `<option value="${t}">${t}</option>`).join('');
 
     // -- Build pair filter chips
     buildPairFilter(mergedRows);
@@ -1080,7 +1313,7 @@ function renderTableBody() {
     '<tr>' + cols.map(c => {
       const v = row[c];
       if (v === '' || v === null || v === undefined) return '<td class="null-cell">—</td>';
-      if (c === 'cell_type') return `<td><span class="tag tag-${v}">${v}</span></td>`;
+      if (c === 'cell_type') return `<td><span class="tag ${tagClassFor(v)}">${v}</span></td>`;
       if (c === 'period')    return `<td><span class="tag tag-${v}">${v}</span></td>`;
       // Highlight the new derived columns
       if (['period','cell','cell_type','pair'].includes(c)) return `<td class="highlight">${v}</td>`;
@@ -1126,26 +1359,26 @@ function applyFilters() {
 }
 
 // ── AA Summary pivot ──────────────────────────────────────────────────────────
-const customFactors = {}; // seg -> overridden factor value (null = use computed)
+const customFactors = {}; // factorKey(seg, arm) -> overridden factor value (null = use computed)
 
-function adjustFactor(seg, delta) {
-  const current = customFactors[seg] !== undefined ? customFactors[seg] : window._computedFactors?.[seg];
+function adjustFactor(key, delta) {
+  const current = customFactors[key] !== undefined ? customFactors[key] : window._computedFactors?.[key];
   if (current === null || current === undefined) return;
-  customFactors[seg] = Math.max(0.0001, parseFloat((current + delta).toFixed(4)));
+  customFactors[key] = Math.max(0.0001, parseFloat((current + delta).toFixed(4)));
   renderAASummary(window._geoRows);
 }
 
-function resetFactor(seg) {
-  delete customFactors[seg];
+function resetFactor(key) {
+  delete customFactors[key];
   renderAASummary(window._geoRows);
 }
 
-function handleFactorInput(seg, val) {
+function handleFactorInput(key, val) {
   const n = parseFloat(val);
-  if (!isNaN(n) && n > 0) customFactors[seg] = parseFloat(n.toFixed(4));
+  if (!isNaN(n) && n > 0) customFactors[key] = parseFloat(n.toFixed(4));
 }
 
-function commitFactorInput(seg) {
+function commitFactorInput(key) {
   renderAASummary(window._geoRows);
 }
 
@@ -1157,13 +1390,15 @@ function renderAASummary(rows) {
 
   // Get all unique segments dynamically
   const segments = [...new Set(filtered.map(r => r.target_variable_nm || '(unknown)'))].sort();
+  const bType = baselineType();
+  const arms  = armTypes();
 
   // Aggregate: for each segment × cell_type × period, sum orders
   const agg = {};
   filtered.forEach(r => {
     if (r.period !== 'AA' && r.period !== 'AB') return;
-    const ct  = r.cell_type || 'unknown';
-    if (ct !== 'control' && ct !== 'treated') return;
+    const ct = r.cell_type || 'unknown';
+    if (!isAnalyzedType(ct)) return;
     const seg = r.target_variable_nm || '(unknown)';
     const key = `${seg}||${ct}||${r.period}`;
     if (!agg[key]) agg[key] = 0;
@@ -1173,16 +1408,17 @@ function renderAASummary(rows) {
   const get = (seg, ct, period) => agg[`${seg}||${ct}||${period}`] || 0;
   const fmt  = n => (n === null || n === undefined || n === 0) ? '—' : n.toLocaleString(undefined, {maximumFractionDigits: 0});
 
-  // Store computed factors for reset reference
+  // Store computed factors for reset reference: one per (segment, arm)
   if (!window._computedFactors) window._computedFactors = {};
   segments.forEach(seg => {
-    const tAA = get(seg, 'treated', 'AA');
-    const cAA = get(seg, 'control', 'AA');
-    window._computedFactors[seg] = cAA > 0 ? tAA / cAA : null;
+    const baseAA = get(seg, bType, 'AA');
+    arms.forEach(arm => {
+      const armAA = get(seg, arm, 'AA');
+      window._computedFactors[factorKey(seg, arm)] = baseAA > 0 ? armAA / baseAA : null;
+    });
   });
 
   // Build header: blank cell + per-segment group + Total
-  const allSegs = [...segments, '__total__'];
   const segColspan = 5;
   const headRow1 = `<tr>
     <th rowspan="2" style="border-right:1px solid var(--border);vertical-align:bottom;"> </th>
@@ -1210,94 +1446,81 @@ function renderAASummary(rows) {
 
   document.getElementById('pivot-head').innerHTML = headRow1 + headRow2;
 
-  // Build rows: Control then Treated
-  const cellTypes = ['control', 'treated'];
+  // Build rows: baseline first, then each arm
+  const cellTypes = [bType, ...arms];
   document.getElementById('pivot-body').innerHTML = cellTypes.map(ct => {
-    const tagClass = `tag-${ct}`;
+    const tagClass = tagClassFor(ct);
+    const isArm = ct !== bType;
 
     // Per-segment cells
     const cells = segments.map((seg, i) => {
       const rawAA = get(seg, ct, 'AA');
       const rawAB = get(seg, ct, 'AB');
-      const computedFactor = window._computedFactors[seg];
-      const factor = customFactors[seg] !== undefined ? customFactors[seg] : computedFactor;
-      const isCustom = customFactors[seg] !== undefined;
-      const aa = ct === 'control' && factor !== null ? rawAA * factor : rawAA;
-      const ab = ct === 'control' && factor !== null ? rawAB * factor : rawAB;
-      const treatedAB      = get(seg, 'treated', 'AB');
-      const rawControlAB   = get(seg, 'control', 'AB');
-      const factoredCtrlAB = factor !== null ? rawControlAB * factor : null;
-      const lift           = factoredCtrlAB !== null ? treatedAB - factoredCtrlAB : null;
-      const liftPct        = factoredCtrlAB !== null && factoredCtrlAB > 0 ? (lift / factoredCtrlAB) * 100 : null;
-      const liftColor      = lift !== null ? (lift >= 0 ? 'green' : 'warn') : '';
 
       let factorCell = `<td class="td-factor">—</td>`;
       let liftCell   = `<td class="td-factor">—</td>`;
-      let liftPctCell= `<td class="td-factor" style="border-right:2px solid var(--border2)">—</td>`;
+      let liftPctCell= `<td class="td-factor null-cell" style="border-right:2px solid var(--border2)">—</td>`;
 
-      if (ct === 'treated') {
-        const fVal    = factor !== null ? factor : null;
-        const fDisp   = fVal !== null ? fVal.toFixed(4) : '—';
-        const fClass  = fVal !== null ? (fVal >= 1 ? 'green' : 'warn') : '';
-        const segKey  = seg.replace(/'/g, "\\'");
+      if (isArm) {
+        const key = factorKey(seg, ct);
+        const computedFactor = window._computedFactors[key];
+        const factor  = customFactors[key] !== undefined ? customFactors[key] : computedFactor;
+        const isCustom = customFactors[key] !== undefined;
+        const baseAB  = get(seg, bType, 'AB');
+        const factoredBaseAB = (factor !== null && factor !== undefined) ? baseAB * factor : null;
+        const lift    = factoredBaseAB !== null ? rawAB - factoredBaseAB : null;
+        const liftPct = factoredBaseAB !== null && factoredBaseAB > 0 ? (lift / factoredBaseAB) * 100 : null;
+        const liftColor = lift !== null ? (lift >= 0 ? 'green' : 'warn') : '';
+
+        const fVal   = (factor !== null && factor !== undefined) ? factor : null;
+        const fDisp  = fVal !== null ? fVal.toFixed(4) : '—';
+        const fClass = fVal !== null ? (fVal >= 1 ? 'green' : 'warn') : '';
+        const keyEsc = key.replace(/'/g, "\\'");
         factorCell = `<td class="td-factor" style="min-width:160px;">
           ${fVal !== null ? `
             <div style="display:flex;align-items:center;gap:6px;">
               <input type="text" inputmode="decimal" value="${fDisp}"
-                onchange="handleFactorInput('${segKey}', this.value)"
-                onblur="commitFactorInput('${segKey}')"
-                onkeydown="if(event.key==='Enter')commitFactorInput('${segKey}')"
+                onchange="handleFactorInput('${keyEsc}', this.value)"
+                onblur="commitFactorInput('${keyEsc}')"
+                onkeydown="if(event.key==='Enter')commitFactorInput('${keyEsc}')"
                 style="width:72px;background:var(--surface);border:1px solid ${isCustom ? 'var(--warn)' : 'var(--border2)'};border-radius:4px;color:var(--${fClass || 'text'});font-family:var(--mono);font-size:.82rem;font-weight:600;padding:3px 6px;outline:none;text-align:center;"/>
               <div style="display:flex;flex-direction:column;gap:1px;">
-                <button onclick="adjustFactor('${segKey}', 0.01)"  style="font-size:.6rem;line-height:1;padding:1px 4px;background:var(--surface);border:1px solid var(--border2);border-radius:2px;color:var(--muted);cursor:pointer;">▲</button>
-                <button onclick="adjustFactor('${segKey}', -0.01)" style="font-size:.6rem;line-height:1;padding:1px 4px;background:var(--surface);border:1px solid var(--border2);border-radius:2px;color:var(--muted);cursor:pointer;">▼</button>
+                <button onclick="adjustFactor('${keyEsc}', 0.01)"  style="font-size:.6rem;line-height:1;padding:1px 4px;background:var(--surface);border:1px solid var(--border2);border-radius:2px;color:var(--muted);cursor:pointer;">▲</button>
+                <button onclick="adjustFactor('${keyEsc}', -0.01)" style="font-size:.6rem;line-height:1;padding:1px 4px;background:var(--surface);border:1px solid var(--border2);border-radius:2px;color:var(--muted);cursor:pointer;">▼</button>
               </div>
-              ${isCustom ? `<button onclick="resetFactor('${segKey}')" title="Reset to computed" style="font-family:var(--mono);font-size:.6rem;padding:2px 5px;background:none;border:1px solid var(--border2);border-radius:3px;color:var(--muted);cursor:pointer;">↺</button>` : ''}
+              ${isCustom ? `<button onclick="resetFactor('${keyEsc}')" title="Reset to computed" style="font-family:var(--mono);font-size:.6rem;padding:2px 5px;background:none;border:1px solid var(--border2);border-radius:3px;color:var(--muted);cursor:pointer;">↺</button>` : ''}
             </div>` : '—'}
         </td>`;
         liftCell    = `<td class="td-factor">${lift !== null ? `<span class="stat-val ${liftColor}" style="font-size:.95rem">${lift >= 0 ? '+' : ''}${fmt(lift)}</span>` : '—'}</td>`;
         liftPctCell = `<td class="td-factor" style="border-right:2px solid var(--border2)">${liftPct !== null ? `<span class="stat-val ${liftColor}" style="font-size:.95rem">${liftPct >= 0 ? '+' : ''}${liftPct.toFixed(2)}%</span>` : '—'}</td>`;
-      } else {
-        liftPctCell = `<td class="td-factor null-cell" style="border-right:2px solid var(--border2)">—</td>`;
       }
 
-      return `<td>${fmt(aa)}</td><td>${fmt(ab)}</td>${factorCell}${liftCell}${liftPctCell}`;
+      return `<td>${fmt(rawAA)}</td><td>${fmt(rawAB)}</td>${factorCell}${liftCell}${liftPctCell}`;
     }).join('');
 
     // Total cells: sum across all segments
-    const totalRawAA  = segments.reduce((s, seg) => s + get(seg, ct, 'AA'), 0);
-    const totalRawAB  = segments.reduce((s, seg) => s + get(seg, ct, 'AB'), 0);
-    let totalAA = totalRawAA, totalAB = totalRawAB, totalLift = null, totalLiftPct = null;
+    const totalRawAA = segments.reduce((s, seg) => s + get(seg, ct, 'AA'), 0);
+    const totalRawAB = segments.reduce((s, seg) => s + get(seg, ct, 'AB'), 0);
+    let totalLift = null, totalLiftPct = null;
 
-    if (ct === 'control') {
-      // Sum factored control AA and AB across segments
-      totalAA = segments.reduce((s, seg) => {
-        const f = customFactors[seg] !== undefined ? customFactors[seg] : window._computedFactors[seg];
-        return s + (f !== null ? get(seg, ct, 'AA') * f : get(seg, ct, 'AA'));
+    if (isArm) {
+      const totalFactoredBaseAB = segments.reduce((s, seg) => {
+        const key = factorKey(seg, ct);
+        const f = customFactors[key] !== undefined ? customFactors[key] : window._computedFactors[key];
+        return s + (f !== null && f !== undefined ? get(seg, bType, 'AB') * f : 0);
       }, 0);
-      totalAB = segments.reduce((s, seg) => {
-        const f = customFactors[seg] !== undefined ? customFactors[seg] : window._computedFactors[seg];
-        return s + (f !== null ? get(seg, ct, 'AB') * f : get(seg, ct, 'AB'));
-      }, 0);
-    } else {
-      // Treated: sum raw, compute lift vs summed factored control AB
-      const totalFactoredCtrlAB = segments.reduce((s, seg) => {
-        const f = customFactors[seg] !== undefined ? customFactors[seg] : window._computedFactors[seg];
-        return s + (f !== null ? get(seg, 'control', 'AB') * f : 0);
-      }, 0);
-      const totalTreatedAB = segments.reduce((s, seg) => s + get(seg, 'treated', 'AB'), 0);
-      totalLift    = totalFactoredCtrlAB > 0 ? totalTreatedAB - totalFactoredCtrlAB : null;
-      totalLiftPct = totalLift !== null && totalFactoredCtrlAB > 0 ? (totalLift / totalFactoredCtrlAB) * 100 : null;
+      totalLift    = totalFactoredBaseAB > 0 ? totalRawAB - totalFactoredBaseAB : null;
+      totalLiftPct = totalLift !== null && totalFactoredBaseAB > 0 ? (totalLift / totalFactoredBaseAB) * 100 : null;
     }
 
     const tlColor = totalLift !== null ? (totalLift >= 0 ? 'green' : 'warn') : '';
-    const totalCells = ct === 'treated'
-      ? `<td style="border-left:2px solid var(--accent);background:rgba(20,184,166,.04)">${fmt(totalAA)}</td>
-         <td style="background:rgba(20,184,166,.04)">${fmt(totalAB)}</td>
+    const totalCells = isArm
+      ? `<td style="border-left:2px solid var(--accent);background:rgba(20,184,166,.04)">${fmt(totalRawAA)}</td>
+         <td style="background:rgba(20,184,166,.04)">${fmt(totalRawAB)}</td>
          <td style="background:rgba(20,184,166,.04)">${totalLift !== null ? `<span class="stat-val ${tlColor}" style="font-size:.95rem">${totalLift >= 0 ? '+' : ''}${fmt(totalLift)}</span>` : '—'}</td>
          <td style="background:rgba(20,184,166,.04);border-right:none">${totalLiftPct !== null ? `<span class="stat-val ${tlColor}" style="font-size:.95rem">${totalLiftPct >= 0 ? '+' : ''}${totalLiftPct.toFixed(2)}%</span>` : '—'}</td>`
-      : `<td style="border-left:2px solid var(--accent);background:rgba(20,184,166,.04)">${fmt(totalAA)}</td>
-         <td style="background:rgba(20,184,166,.04)">${fmt(totalAB)}</td>
+      : `<td style="border-left:2px solid var(--accent);background:rgba(20,184,166,.04)">${fmt(totalRawAA)}</td>
+         <td style="background:rgba(20,184,166,.04)">${fmt(totalRawAB)}</td>
          <td class="null-cell" style="background:rgba(20,184,166,.04)">—</td>
          <td class="null-cell" style="background:rgba(20,184,166,.04);border-right:none">—</td>`;
 
@@ -1322,11 +1545,14 @@ function renderWindowLift(filtered, segments) {
     return 'DNU';
   };
 
+  const bType = baselineType();
+  const arms  = armTypes();
+
   const agg = {};
   let anyAC = false;
   filtered.forEach(r => {
     const ct = r.cell_type;
-    if (ct !== 'control' && ct !== 'treated') return;
+    if (!isAnalyzedType(ct)) return;
     const eff = effOf(r);
     if (eff !== 'AB' && eff !== 'AC') return;
     if (eff === 'AC') anyAC = true;
@@ -1335,21 +1561,24 @@ function renderWindowLift(filtered, segments) {
     agg[k] = (agg[k] || 0) + (parseFloat(r.orders) || 0);
   });
   const gg = (seg, ct, p) => agg[`${seg}||${ct}||${p}`] || 0;
-  const factorOf = seg => (customFactors[seg] !== undefined ? customFactors[seg] : window._computedFactors[seg]);
+  const factorOf = (seg, arm) => {
+    const key = factorKey(seg, arm);
+    return customFactors[key] !== undefined ? customFactors[key] : window._computedFactors[key];
+  };
   const signed = n => (n >= 0 ? '+' : '') + Math.round(n).toLocaleString();
 
   document.getElementById('window-lift-head').innerHTML = `
     <tr>
       <th rowspan="2" style="border-right:1px solid var(--border);vertical-align:bottom;">Segment</th>
-      <th rowspan="2" class="th-factor" style="vertical-align:bottom;">Factor</th>
-      <th colspan="2" style="text-align:center;border-bottom:1px solid var(--border);border-left:2px solid var(--accent2);color:var(--accent2);">AB Window</th>
-      <th colspan="2" style="text-align:center;border-bottom:1px solid var(--border);border-left:2px solid #6366f1;color:#6366f1;">AC Window</th>
-      <th colspan="2" style="text-align:center;border-bottom:1px solid var(--border);border-left:2px solid var(--accent);color:var(--accent);">AB + AC</th>
+      ${arms.map(arm => `<th colspan="7" style="text-align:center;border-right:2px solid var(--border2);border-bottom:1px solid var(--border);">${arm}</th>`).join('')}
     </tr>
     <tr>
-      <th class="th-factor" style="border-left:2px solid var(--accent2)">Lift</th><th class="th-factor">Lift %</th>
-      <th class="th-factor" style="border-left:2px solid #6366f1">Lift</th><th class="th-factor">Lift %</th>
-      <th class="th-factor" style="border-left:2px solid var(--accent)">Lift</th><th class="th-factor" style="border-right:none">Lift %</th>
+      ${arms.map(() => `
+        <th class="th-factor">Factor</th>
+        <th class="th-factor" style="border-left:2px solid var(--accent2)">Lift</th><th class="th-factor">Lift %</th>
+        <th class="th-factor" style="border-left:2px solid #6366f1">Lift</th><th class="th-factor">Lift %</th>
+        <th class="th-factor" style="border-left:2px solid var(--accent)">Lift</th><th class="th-factor" style="border-right:2px solid var(--border2)">Lift %</th>
+      `).join('')}
     </tr>`;
 
   // a Lift / Lift% cell pair for one window
@@ -1362,28 +1591,32 @@ function renderWindowLift(filtered, segments) {
            `<td class="td-factor">${pct !== null ? `<span class="stat-val ${cls}" style="font-size:.92rem">${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%</span>` : '—'}</td>`;
   };
 
-  const buildRow = (label, segList, isTotal) => {
-    const valid = isTotal ? true : (factorOf(segList[0]) !== null && factorOf(segList[0]) !== undefined);
+  const buildArmGroup = (arm, segList, isTotal) => {
+    const valid = isTotal ? true : (factorOf(segList[0], arm) !== null && factorOf(segList[0], arm) !== undefined);
     let tAB = 0, cAB = 0, tAC = 0, cAC = 0;
     segList.forEach(seg => {
-      const f = factorOf(seg);
-      tAB += gg(seg, 'treated', 'AB');
-      cAB += (f !== null && f !== undefined ? gg(seg, 'control', 'AB') * f : 0);
-      tAC += gg(seg, 'treated', 'AC');
-      cAC += (f !== null && f !== undefined ? gg(seg, 'control', 'AC') * f : 0);
+      const f = factorOf(seg, arm);
+      tAB += gg(seg, arm, 'AB');
+      cAB += (f !== null && f !== undefined ? gg(seg, bType, 'AB') * f : 0);
+      tAC += gg(seg, arm, 'AC');
+      cAC += (f !== null && f !== undefined ? gg(seg, bType, 'AC') * f : 0);
     });
     const abLift = tAB - cAB, acLift = tAC - cAC, totLift = abLift + acLift, totDen = cAB + cAC;
     const acValid = valid && (tAC + cAC) > 0;
-    const fTxt = (!isTotal && valid) ? factorOf(segList[0]).toFixed(4) : '—';
+    const fTxt = (!isTotal && valid) ? factorOf(segList[0], arm).toFixed(4) : '—';
+    return `<td class="td-factor"${isTotal ? ' style="border-top:2px solid var(--accent)"' : ''}>${fTxt}</td>
+      ${grp(abLift, cAB, 'var(--accent2)', valid)}
+      ${grp(acLift, cAC, '#6366f1', acValid)}
+      ${grp(totLift, totDen, 'var(--accent)', valid)}`;
+  };
+
+  const buildRow = (label, segList, isTotal) => {
     const labelCell = isTotal
       ? `<td style="border-right:1px solid var(--border);border-top:2px solid var(--accent);color:var(--accent);font-weight:600;">${label}</td>`
       : `<td style="border-right:1px solid var(--border);">${label}</td>`;
     return `<tr style="${isTotal ? 'background:rgba(20,184,166,.04);' : ''}">
       ${labelCell}
-      <td class="td-factor"${isTotal ? ' style="border-top:2px solid var(--accent)"' : ''}>${fTxt}</td>
-      ${grp(abLift, cAB, 'var(--accent2)', valid)}
-      ${grp(acLift, cAC, '#6366f1', acValid)}
-      ${grp(totLift, totDen, 'var(--accent)', valid)}
+      ${arms.map(arm => buildArmGroup(arm, segList, isTotal)).join('')}
     </tr>`;
   };
 
@@ -1394,7 +1627,7 @@ function renderWindowLift(filtered, segments) {
   const note = document.getElementById('window-lift-note');
   if (note) {
     note.innerHTML = anyAC
-      ? `Same fixed base AA factor as above, applied to each window · <span style="color:var(--accent2)">AB</span> lift = treated AB − factored control AB · <span style="color:#6366f1">AC</span> lift = treated AC − factored control AC · AC = days after AB end through the AC end date`
+      ? `Same fixed base AA factor as above, applied to each window · <span style="color:var(--accent2)">AB</span> lift = arm AB − factored baseline AB · <span style="color:#6366f1">AC</span> lift = arm AC − factored baseline AC · AC = days after AB end through the AC end date`
       : `<span style="color:var(--warn)">No AC data in range.</span> Set an AC End date on the Setup screen (or leave it blank for open-ended) and rebuild — AC covers sales days after the AB end date.`;
   }
 }
@@ -1403,15 +1636,17 @@ function renderWindowLift(filtered, segments) {
 let geoSegments = [];
 let geoActiveSegment = null;
 
-function renderGeoTotals(rows) {
-  geoSegments = [...new Set(rows.map(r => r.target_variable_nm || '(unknown)'))].sort();
-  geoActiveSegment = geoSegments[0] || null;
-  // Aggregate across ALL segments, per geo × cell_type × period
+// Shared renderer for both the Combined (all segments) and per-segment Geo Lift
+// views — `rows` is pre-filtered to the relevant segment(s) by the caller.
+function renderGeoRows(rows) {
+  const bType = baselineType();
+  const arms  = armTypes();
+
   const agg = {}, meta = {};
   rows.forEach(r => {
     if (r.period !== 'AA' && r.period !== 'AB') return;
     const ct = r.cell_type || '';
-    if (ct !== 'control' && ct !== 'treated') return;
+    if (!isAnalyzedType(ct)) return;
     const key = `${r.geo_id}||${ct}||${r.period}`;
     if (!agg[key]) agg[key] = 0;
     agg[key] += parseFloat(r.orders) || 0;
@@ -1425,10 +1660,13 @@ function renderGeoTotals(rows) {
   const pairs = {};
   Object.keys(meta).forEach(gid => {
     const p = meta[gid].pair || '—';
-    if (!pairs[p]) pairs[p] = { control: null, treated: null };
+    if (!pairs[p]) pairs[p] = {};
     pairs[p][meta[gid].cell_type] = gid;
   });
-  const sortedPairs = Object.keys(pairs).sort((a, b) => parseInt(a) - parseInt(b) || a.localeCompare(b));
+  const sortedPairs = Object.keys(pairs).sort((a, b) => {
+    const an = parseInt(a), bn = parseInt(b);
+    return isNaN(an) || isNaN(bn) ? a.localeCompare(b) : (an - bn || a.localeCompare(b));
+  });
 
   document.getElementById('geo-head').innerHTML = `
     <tr>
@@ -1438,72 +1676,89 @@ function renderGeoTotals(rows) {
     </tr>`;
 
   let html = '';
-  let tCAA = 0, tCAB = 0, tTAA = 0, tTAB = 0;
+  let baseTotalAA = 0, baseTotalAB = 0;
+  const armTotals = {};
+  arms.forEach(a => armTotals[a] = { aa: 0, ab: 0, liftNum: 0, liftDen: 0 });
 
   sortedPairs.forEach((p, pi) => {
-    const cg = pairs[p].control, tg = pairs[p].treated;
-    const ctrlAA = cg ? getG(cg, 'control', 'AA') : 0;
-    const treatAA = tg ? getG(tg, 'treated', 'AA') : 0;
-    const factor = ctrlAA > 0 ? treatAA / ctrlAA : null;
-    const fClass = factor !== null ? (factor >= 1 ? 'green' : 'warn') : '';
+    const baseGid = pairs[p][bType];
+    const baseAA  = baseGid ? getG(baseGid, bType, 'AA') : 0;
+    const baseAB  = baseGid ? getG(baseGid, bType, 'AB') : 0;
     const sepClass = pi > 0 ? ' geo-pair-sep' : '';
+    let firstInPair = true;
 
-    ['control', 'treated'].forEach(ct => {
-      const gid = ct === 'control' ? cg : tg;
-      if (!gid) return;
-      const rawAA = getG(gid, ct, 'AA'), rawAB = getG(gid, ct, 'AB');
-      const aa = ct === 'control' && factor !== null ? rawAA * factor : rawAA;
-      const ab = ct === 'control' && factor !== null ? rawAB * factor : rawAB;
-
-      if (ct === 'control') { tCAA += aa; tCAB += ab; }
-      else { tTAA += aa; tTAB += rawAB; }
-
-      let factorCell = `<td class="td-factor null-cell">—</td>`;
-      let liftCell   = `<td class="td-factor null-cell" style="border-right:none">—</td>`;
-      let liftPctCell= `<td class="td-factor null-cell">—</td>`;
-
-      if (ct === 'treated') {
-        factorCell = `<td class="td-factor"><span class="stat-val ${fClass}" style="font-size:.85rem">${factor !== null ? factor.toFixed(4) : '—'}</span></td>`;
-        const factoredCtrlAB = factor !== null ? getG(cg, 'control', 'AB') * factor : null;
-        const lift    = factoredCtrlAB !== null ? rawAB - factoredCtrlAB : null;
-        const liftPct = lift !== null && factoredCtrlAB > 0 ? (lift / factoredCtrlAB) * 100 : null;
-        const lc      = lift !== null ? (lift >= 0 ? 'td-lift-pos' : 'td-lift-neg') : '';
-        liftCell    = `<td class="td-factor" style="border-right:none"><span class="${lc}">${lift !== null ? (lift >= 0 ? '+' : '') + fmtN(lift) : '—'}</span></td>`;
-        liftPctCell = `<td class="td-factor"><span class="${lc}">${liftPct !== null ? fmtP(liftPct) : '—'}</span></td>`;
-      }
-
-      html += `<tr class="${ct === 'control' ? sepClass : ''}">
-        <td>${ct === 'control' ? p : ''}</td>
-        <td><span class="tag tag-${ct}">${ct}</span></td>
-        <td style="color:var(--text)">${meta[gid].DMA}</td>
-        <td>${fmtN(aa)}</td>
-        ${factorCell}
-        <td>${fmtN(ab)}</td>
-        ${liftPctCell}
-        ${liftCell}
+    if (baseGid) {
+      baseTotalAA += baseAA; baseTotalAB += baseAB;
+      html += `<tr class="${sepClass}">
+        <td>${p}</td>
+        <td><span class="tag ${tagClassFor(bType)}">${bType}</span></td>
+        <td style="color:var(--text)">${meta[baseGid].DMA}</td>
+        <td>${fmtN(baseAA)}</td>
+        <td class="td-factor null-cell">—</td>
+        <td>${fmtN(baseAB)}</td>
+        <td class="td-factor null-cell">—</td>
+        <td class="td-factor null-cell" style="border-right:none">—</td>
       </tr>`;
+      firstInPair = false;
+    }
+
+    arms.forEach(arm => {
+      const armGid = pairs[p][arm];
+      if (!armGid) return;
+      const rawAA = getG(armGid, arm, 'AA'), rawAB = getG(armGid, arm, 'AB');
+      const factor  = baseAA > 0 ? rawAA / baseAA : null;
+      const fClass  = factor !== null ? (factor >= 1 ? 'green' : 'warn') : '';
+      const factoredBaseAB = factor !== null ? baseAB * factor : null;
+      const lift    = factoredBaseAB !== null ? rawAB - factoredBaseAB : null;
+      const liftPct = lift !== null && factoredBaseAB > 0 ? (lift / factoredBaseAB) * 100 : null;
+      const lc      = lift !== null ? (lift >= 0 ? 'td-lift-pos' : 'td-lift-neg') : '';
+
+      armTotals[arm].aa += rawAA; armTotals[arm].ab += rawAB;
+      if (factoredBaseAB !== null) { armTotals[arm].liftNum += (rawAB - factoredBaseAB); armTotals[arm].liftDen += factoredBaseAB; }
+
+      html += `<tr class="${firstInPair ? sepClass : ''}">
+        <td>${firstInPair ? p : ''}</td>
+        <td><span class="tag ${tagClassFor(arm)}">${arm}</span></td>
+        <td style="color:var(--text)">${meta[armGid].DMA}</td>
+        <td>${fmtN(rawAA)}</td>
+        <td class="td-factor"><span class="stat-val ${fClass}" style="font-size:.85rem">${factor !== null ? factor.toFixed(4) : '—'}</span></td>
+        <td>${fmtN(rawAB)}</td>
+        <td class="td-factor"><span class="${lc}">${liftPct !== null ? fmtP(liftPct) : '—'}</span></td>
+        <td class="td-factor" style="border-right:none"><span class="${lc}">${lift !== null ? (lift >= 0 ? '+' : '') + fmtN(lift) : '—'}</span></td>
+      </tr>`;
+      firstInPair = false;
     });
   });
 
-  // Totals row
-  const tLift    = tCAB > 0 ? tTAB - tCAB : null;
-  const tLiftPct = tLift !== null && tCAB > 0 ? (tLift / tCAB) * 100 : null;
-  const tlc      = tLift !== null ? (tLift >= 0 ? 'td-lift-pos' : 'td-lift-neg') : '';
+  // Totals rows: baseline (raw) + one per arm
   html += `
     <tr style="border-top:3px solid var(--border2);background:rgba(20,184,166,.03);">
       <td style="font-family:var(--mono);font-size:.68rem;font-weight:600;color:var(--accent);">Total</td>
-      <td><span class="tag tag-control">control</span></td><td></td>
-      <td>${fmtN(tCAA)}</td><td class="td-factor">—</td><td>${fmtN(tCAB)}</td>
+      <td><span class="tag ${tagClassFor(bType)}">${bType}</span></td><td></td>
+      <td>${fmtN(baseTotalAA)}</td><td class="td-factor">—</td><td>${fmtN(baseTotalAB)}</td>
       <td class="td-factor">—</td><td class="td-factor" style="border-right:none">—</td>
-    </tr>
+    </tr>`;
+  arms.forEach(arm => {
+    const t = armTotals[arm];
+    const tLift    = t.liftDen > 0 ? t.liftNum : null;
+    const tLiftPct = tLift !== null && t.liftDen > 0 ? (tLift / t.liftDen) * 100 : null;
+    const tlc      = tLift !== null ? (tLift >= 0 ? 'td-lift-pos' : 'td-lift-neg') : '';
+    html += `
     <tr style="background:rgba(20,184,166,.03);">
-      <td></td><td><span class="tag tag-treated">treated</span></td><td></td>
-      <td>${fmtN(tTAA)}</td><td class="td-factor">—</td><td>${fmtN(tTAB)}</td>
+      <td></td><td><span class="tag ${tagClassFor(arm)}">${arm}</span></td><td></td>
+      <td>${fmtN(t.aa)}</td><td class="td-factor">—</td><td>${fmtN(t.ab)}</td>
       <td class="td-factor"><span class="${tlc}">${tLiftPct !== null ? fmtP(tLiftPct) : '—'}</span></td>
       <td class="td-factor" style="border-right:none"><span class="${tlc}">${tLift !== null ? (tLift >= 0 ? '+' : '') + fmtN(tLift) : '—'}</span></td>
     </tr>`;
+  });
 
   document.getElementById('geo-body').innerHTML = html;
+}
+
+function renderGeoTotals(rows) {
+  geoSegments = [...new Set(rows.map(r => r.target_variable_nm || '(unknown)'))].sort();
+  geoActiveSegment = geoSegments[0] || null;
+  renderGeoRows(rows);
 }
 
 function renderGeoTable(rows) {
@@ -1531,104 +1786,7 @@ function selectGeoSegment(seg, btn) {
 }
 
 function renderGeoSegment(rows, seg) {
-  // Aggregate per geo_id (DMA) × cell_type × period for this segment
-  const agg = {};
-  const meta = {}; // geo_id -> { DMA, pair, cell_type }
-  rows.forEach(r => {
-    if ((r.target_variable_nm || '(unknown)') !== seg) return;
-    if (r.period !== 'AA' && r.period !== 'AB') return;
-    const ct = r.cell_type || '';
-    if (ct !== 'control' && ct !== 'treated') return;
-    const gid = r.geo_id;
-    const key = `${gid}||${ct}||${r.period}`;
-    if (!agg[key]) agg[key] = 0;
-    agg[key] += parseFloat(r.orders) || 0;
-    if (!meta[gid]) meta[gid] = { DMA: r.DMA || gid, pair: r.pair || '', cell_type: ct };
-  });
-
-  const getG = (gid, ct, period) => agg[`${gid}||${ct}||${period}`] || 0;
-  const fmtN = n => n === null || n === undefined ? '—' : n.toLocaleString(undefined, {maximumFractionDigits: 0});
-  const fmtP = n => n === null || n === undefined ? '—' : (n >= 0 ? '+' : '') + n.toFixed(1) + '%';
-
-  // Group geos by pair
-  const pairs = {};
-  Object.keys(meta).forEach(gid => {
-    const p = meta[gid].pair || '—';
-    if (!pairs[p]) pairs[p] = { control: null, treated: null };
-    pairs[p][meta[gid].cell_type] = gid;
-  });
-
-  const sortedPairs = Object.keys(pairs).sort((a, b) => {
-    const an = parseInt(a), bn = parseInt(b);
-    return isNaN(an) || isNaN(bn) ? a.localeCompare(b) : an - bn;
-  });
-
-  document.getElementById('geo-head').innerHTML = `
-    <tr>
-      <th>Pair</th>
-      <th>Cell</th>
-      <th>DMA</th>
-      <th>AA</th>
-      <th class="th-factor">Factor Value</th>
-      <th>AB</th>
-      <th class="th-factor">Lift %</th>
-      <th class="th-factor" style="border-right:none">Lift</th>
-    </tr>`;
-
-  let html = '';
-  sortedPairs.forEach((p, pi) => {
-    const ctrlGid  = pairs[p].control;
-    const treatGid = pairs[p].treated;
-
-    // Factor for this pair
-    const ctrlAA  = ctrlGid  ? getG(ctrlGid,  'control', 'AA') : 0;
-    const treatAA = treatGid ? getG(treatGid, 'treated', 'AA') : 0;
-    const factor  = ctrlAA > 0 ? treatAA / ctrlAA : null;
-    const fClass  = factor !== null ? (factor >= 1 ? 'green' : 'warn') : '';
-
-    const sepClass = pi > 0 ? ' geo-pair-sep' : '';
-
-    ['control', 'treated'].forEach(ct => {
-      const gid = ct === 'control' ? ctrlGid : treatGid;
-      if (!gid) return;
-      const rawAA = getG(gid, ct, 'AA');
-      const rawAB = getG(gid, ct, 'AB');
-      const aa    = ct === 'control' && factor !== null ? rawAA * factor : rawAA;
-      const ab    = ct === 'control' && factor !== null ? rawAB * factor : rawAB;
-
-      const tagClass = `tag-${ct}`;
-      let factorCell = `<td class="td-factor null-cell">—</td>`;
-      let liftCell   = `<td class="td-factor null-cell" style="border-right:none">—</td>`;
-      let liftPctCell= `<td class="td-factor null-cell">—</td>`;
-
-      if (ct === 'treated') {
-        const factorVal = factor !== null ? factor.toFixed(4) : null;
-        factorCell = `<td class="td-factor"><span class="stat-val ${fClass}" style="font-size:.85rem">${factorVal ?? '—'}</span></td>`;
-
-        const factoredCtrlAB = factor !== null ? getG(ctrlGid, 'control', 'AB') * factor : null;
-        const lift    = factoredCtrlAB !== null ? rawAB - factoredCtrlAB : null;
-        const liftPct = factoredCtrlAB !== null && factoredCtrlAB > 0 ? (lift / factoredCtrlAB) * 100 : null;
-        const lc      = lift !== null ? (lift >= 0 ? 'td-lift-pos' : 'td-lift-neg') : '';
-
-        liftCell    = `<td class="td-factor" style="border-right:none"><span class="${lc}">${lift !== null ? (lift >= 0 ? '+' : '') + fmtN(lift) : '—'}</span></td>`;
-        liftPctCell = `<td class="td-factor"><span class="${lc}">${liftPct !== null ? fmtP(liftPct) : '—'}</span></td>`;
-      }
-
-      const rowSep = ct === 'control' ? sepClass : '';
-      html += `<tr class="${rowSep}">
-        <td>${ct === 'control' ? p : ''}</td>
-        <td><span class="tag ${tagClass}">${ct}</span></td>
-        <td style="color:var(--text)">${meta[gid].DMA}</td>
-        <td>${fmtN(aa)}</td>
-        ${factorCell}
-        <td>${fmtN(ab)}</td>
-        ${liftPctCell}
-        ${liftCell}
-      </tr>`;
-    });
-  });
-
-  document.getElementById('geo-body').innerHTML = html;
+  renderGeoRows(rows.filter(r => (r.target_variable_nm || '(unknown)') === seg));
 }
 
 // ── Daily Cumulative Factor ───────────────────────────────────────────────────
@@ -1652,11 +1810,14 @@ function selectDailySegment(seg, btn) {
 function renderDailySegment(rows, seg) {
   if (!seg) return;
 
-  // Filter to this segment, AA and AB only, control and treated only
+  const bType = baselineType();
+  const arms  = armTypes();
+
+  // Filter to this segment, AA and AB only, analyzed cell types only
   const filtered = rows.filter(r =>
     (r.target_variable_nm || '(unknown)') === seg &&
     (r.period === 'AA' || r.period === 'AB') &&
-    (r.cell_type === 'control' || r.cell_type === 'treated')
+    isAnalyzedType(r.cell_type)
   );
 
   // Get sorted unique days, grouped by period
@@ -1678,22 +1839,26 @@ function renderDailySegment(rows, seg) {
     byGeoDay[key] += parseFloat(r.orders) || 0;
   });
 
-  // Aggregate total control and treated per day (for cumulative factor row)
-  const dayTotals = {}; // day -> { control, treated }
+  // Aggregate per-type totals per day (for the cumulative factor rows)
+  const dayTotals = {}; // day -> { [cell_type]: sum }
   filtered.forEach(r => {
-    if (!dayTotals[r.day]) dayTotals[r.day] = { control: 0, treated: 0 };
-    dayTotals[r.day][r.cell_type] += parseFloat(r.orders) || 0;
+    if (!dayTotals[r.day]) dayTotals[r.day] = {};
+    dayTotals[r.day][r.cell_type] = (dayTotals[r.day][r.cell_type] || 0) + (parseFloat(r.orders) || 0);
   });
 
-  // Compute cumulative factor per day, resetting at AA start and AB start
-  let cumCtrl = 0, cumTreat = 0, lastPeriod = null;
-  const cumFactor = {};
+  // Compute cumulative factor per day per arm, resetting at AA start and AB start
+  let cumBase = 0, lastPeriod = null;
+  const cumArm = {}; arms.forEach(a => cumArm[a] = 0);
+  const cumFactor = {}; // arm -> day -> factor
+  arms.forEach(a => cumFactor[a] = {});
   allDays.forEach(day => {
     const period = aaDays.includes(day) ? 'AA' : 'AB';
-    if (period !== lastPeriod) { cumCtrl = 0; cumTreat = 0; lastPeriod = period; }
-    cumCtrl  += dayTotals[day]?.control  || 0;
-    cumTreat += dayTotals[day]?.treated  || 0;
-    cumFactor[day] = cumCtrl > 0 ? cumTreat / cumCtrl : null;
+    if (period !== lastPeriod) { cumBase = 0; arms.forEach(a => cumArm[a] = 0); lastPeriod = period; }
+    cumBase += dayTotals[day]?.[bType] || 0;
+    arms.forEach(a => {
+      cumArm[a] += dayTotals[day]?.[a] || 0;
+      cumFactor[a][day] = cumBase > 0 ? cumArm[a] / cumBase : null;
+    });
   });
 
   // Heat color: green=close to 1, red=far from 1
@@ -1706,11 +1871,12 @@ function renderDailySegment(rows, seg) {
     return `background:rgba(${r},${g},50,0.25);color:${t > 0.5 ? 'var(--warn)' : 'var(--accent)'}`;
   }
 
-  // Sort geos by pair then cell_type
+  // Sort geos by pair, baseline first then arms in configured order
+  const typeOrder = [bType, ...arms];
   const sortedGeos = Object.keys(geoMeta).sort((a, b) => {
     const pa = parseInt(geoMeta[a].pair) || 99999, pb = parseInt(geoMeta[b].pair) || 99999;
     if (pa !== pb) return pa - pb;
-    return geoMeta[a].cell_type === 'control' ? -1 : 1;
+    return typeOrder.indexOf(geoMeta[a].cell_type) - typeOrder.indexOf(geoMeta[b].cell_type);
   });
 
   const fmtN = n => !n ? '—' : n.toLocaleString(undefined, {maximumFractionDigits: 0});
@@ -1731,13 +1897,31 @@ function renderDailySegment(rows, seg) {
       ${dateCols}
     </tr>`;
 
-  // Factor value row
-  const factorCells = allDays.map(day => {
-    const f = cumFactor[day];
-    const isAbStart = day === firstAbDay;
-    const style = heatColor(f) + (isAbStart ? ';border-left:3px solid var(--accent)' : '');
-    return `<td class="td-heat" style="${style}">${f !== null ? f.toFixed(3) : '—'}</td>`;
+  // Factor value row(s) — one per arm
+  const factorRows = arms.map(arm => {
+    const cells = allDays.map(day => {
+      const f = cumFactor[arm][day];
+      const isAbStart = day === firstAbDay;
+      const style = heatColor(f) + (isAbStart ? ';border-left:3px solid var(--accent)' : '');
+      return `<td class="td-heat" style="${style}">${f !== null ? f.toFixed(3) : '—'}</td>`;
+    }).join('');
+    return `<tr style="background:#f3f4f6;">
+      <td colspan="3" style="font-family:var(--mono);font-size:.68rem;font-weight:600;color:var(--accent);letter-spacing:.06em;text-transform:uppercase;padding:8px 13px;">Factor Value — ${arm}</td>
+      ${cells}
+    </tr>`;
   }).join('');
+
+  // Per-type per-day summary rows: baseline then each arm
+  const summaryRows = typeOrder.map(ct => `
+    <tr style="background:#f3f4f6;border-bottom:2px solid var(--border2);">
+      <td colspan="2" style="font-family:var(--mono);font-size:.65rem;color:var(--muted);padding:4px 13px;">${ct}</td>
+      <td></td>
+      ${allDays.map(day => {
+        const isAbStart = day === firstAbDay;
+        const v = dayTotals[day]?.[ct] || 0;
+        return `<td class="td-daily-num" style="${isAbStart ? 'border-left:3px solid var(--accent);' : ''}">${fmtN(v)}</td>`;
+      }).join('')}
+    </tr>`).join('');
 
   // Geo rows — show pair on every row
   let lastPair = null;
@@ -1746,7 +1930,6 @@ function renderDailySegment(rows, seg) {
     const isNewPair = m.pair !== lastPair;
     lastPair = m.pair;
     const sepStyle = isNewPair && m.pair !== '—' ? 'border-top:2px solid var(--border2);' : '';
-    const tagClass = `tag-${m.cell_type}`;
     const dayCells = allDays.map(day => {
       const val = byGeoDay[`${gid}||${day}`] || 0;
       const isAbStart = day === firstAbDay;
@@ -1754,83 +1937,59 @@ function renderDailySegment(rows, seg) {
     }).join('');
     return `<tr style="${sepStyle}">
       <td>${m.pair}</td>
-      <td><span class="tag ${tagClass}">${m.cell_type}</span></td>
+      <td><span class="tag ${tagClassFor(m.cell_type)}">${m.cell_type}</span></td>
       <td class="td-dma">${m.DMA}</td>
       ${dayCells}
     </tr>`;
   }).join('');
 
-  // Totals rows — sum control and treated per day across all geos
-  const totalCtrlByDay = {}, totalTreatByDay = {};
+  // Totals rows — sum per type per day across all geos
+  const totalByTypeDay = {}; // type -> day -> sum
+  typeOrder.forEach(t => totalByTypeDay[t] = {});
   sortedGeos.forEach(gid => {
     const ct = geoMeta[gid].cell_type;
     allDays.forEach(day => {
       const val = byGeoDay[`${gid}||${day}`] || 0;
-      if (ct === 'control') { totalCtrlByDay[day] = (totalCtrlByDay[day] || 0) + val; }
-      if (ct === 'treated') { totalTreatByDay[day] = (totalTreatByDay[day] || 0) + val; }
+      totalByTypeDay[ct][day] = (totalByTypeDay[ct][day] || 0) + val;
     });
   });
-  const totalRowStyle = 'border-top:3px solid var(--border2);background:rgba(20,184,166,.03);';
-  const totalCtrlCells = allDays.map(day => {
-    const isAbStart = day === firstAbDay;
-    return `<td class="td-daily-num" style="${isAbStart ? 'border-left:3px solid var(--accent);' : ''}">${fmtN(totalCtrlByDay[day] || 0)}</td>`;
-  }).join('');
-  const totalTreatCells = allDays.map(day => {
-    const isAbStart = day === firstAbDay;
-    return `<td class="td-daily-num" style="${isAbStart ? 'border-left:3px solid var(--accent);' : ''}">${fmtN(totalTreatByDay[day] || 0)}</td>`;
-  }).join('');
-
-  const totalRows = `
-    <tr style="${totalRowStyle}">
-      <td style="font-family:var(--mono);font-size:.68rem;font-weight:600;color:var(--accent);">Total</td>
-      <td><span class="tag tag-control">control</span></td>
+  const totalRows = typeOrder.map((ct, i) => {
+    const cells = allDays.map(day => {
+      const isAbStart = day === firstAbDay;
+      return `<td class="td-daily-num" style="${isAbStart ? 'border-left:3px solid var(--accent);' : ''}">${fmtN(totalByTypeDay[ct][day] || 0)}</td>`;
+    }).join('');
+    return `<tr style="${i === 0 ? 'border-top:3px solid var(--border2);' : ''}background:rgba(20,184,166,.03);">
+      <td style="font-family:var(--mono);font-size:.68rem;font-weight:600;color:var(--accent);">${i === 0 ? 'Total' : ''}</td>
+      <td><span class="tag ${tagClassFor(ct)}">${ct}</span></td>
       <td></td>
-      ${totalCtrlCells}
-    </tr>
-    <tr style="background:rgba(20,184,166,.03);">
-      <td></td>
-      <td><span class="tag tag-treated">treated</span></td>
-      <td></td>
-      ${totalTreatCells}
+      ${cells}
     </tr>`;
+  }).join('');
 
   document.getElementById('daily-body').innerHTML =
-    `<tr style="background:#f3f4f6;">
-      <td colspan="3" style="font-family:var(--mono);font-size:.68rem;font-weight:600;color:var(--accent);letter-spacing:.06em;text-transform:uppercase;padding:8px 13px;">Factor Value</td>
-      ${factorCells}
-    </tr>
-    <tr style="background:#f3f4f6;border-bottom:2px solid var(--border2);">
-      <td colspan="2" style="font-family:var(--mono);font-size:.65rem;color:var(--muted);padding:4px 13px;">control</td>
-      <td></td>
-      ${allDays.map(day => {
-        const isAbStart = day === firstAbDay;
-        const v = dayTotals[day]?.control || 0;
-        return `<td class="td-daily-num" style="${isAbStart ? 'border-left:3px solid var(--accent);' : ''}">${fmtN(v)}</td>`;
-      }).join('')}
-    </tr>
-    <tr style="background:#f3f4f6;border-bottom:2px solid var(--border2);">
-      <td colspan="2" style="font-family:var(--mono);font-size:.65rem;color:var(--muted);padding:4px 13px;">treated</td>
-      <td></td>
-      ${allDays.map(day => {
-        const isAbStart = day === firstAbDay;
-        const v = dayTotals[day]?.treated || 0;
-        return `<td class="td-daily-num" style="${isAbStart ? 'border-left:3px solid var(--accent);' : ''}">${fmtN(v)}</td>`;
-      }).join('')}
-    </tr>
+    `${factorRows}
+    ${summaryRows}
     ${geoRows}
     ${totalRows}`;
 }
 
 // ── Cumulative Lift Over Time ──────────────────────────────────────────────────
 let cumActiveSegment = '__combined__';
-let cumMode = 'orders'; // 'orders' = treated vs factored control · 'lift' = cumulative lift · 'rolling' = rolling daily lift
+let cumActiveArm = null; // one arm at a time — overlaying 3+ lines would be unreadable
+let cumMode = 'orders'; // 'orders' = arm vs factored baseline · 'lift' = cumulative lift · 'rolling' = rolling daily lift
 let cumRollWindow = 7;  // trailing-day window for rolling lift
 
 function renderCumLift(rows) {
   window._cumRows = rows;
   const segments = [...new Set(rows.map(r => r.target_variable_nm || '(unknown)'))].sort();
+  const arms = armTypes();
   cumActiveSegment = '__combined__';
+  cumActiveArm = arms[0] || null;
   cumMode = 'orders';
+
+  document.getElementById('cumlift-arm-tabs').innerHTML = arms.map((arm, i) =>
+    `<button class="seg-tab${i === 0 ? ' active' : ''}" onclick="selectCumArm('${arm.replace(/'/g,"\\'")}', this)">${arm}</button>`
+  ).join('');
 
   document.getElementById('cumlift-segment-tabs').innerHTML =
     `<button class="seg-tab active" onclick="selectCumSegment('__combined__', this)">Combined</button>` +
@@ -1838,6 +1997,13 @@ function renderCumLift(rows) {
       `<button class="seg-tab" onclick="selectCumSegment('${seg.replace(/'/g,"\\'")}', this)">${seg}</button>`
     ).join('');
 
+  renderCumView();
+}
+
+function selectCumArm(arm, btn) {
+  document.querySelectorAll('#cumlift-arm-tabs .seg-tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  cumActiveArm = arm;
   renderCumView();
 }
 
@@ -1866,8 +2032,8 @@ function cumPlot(data, mode) {
   if (mode === 'orders') {
     return {
       series: [
-        { key: 'control', color: 'var(--accent2)', label: 'factored control', vals: s.map(d => d.control) },
-        { key: 'treated', color: 'var(--accent)',  label: 'treated',          vals: s.map(d => d.treated) }
+        { key: 'control', color: 'var(--accent2)', label: `factored ${data.baseType}`, vals: s.map(d => d.control) },
+        { key: 'treated', color: 'var(--accent)',  label: data.arm,                     vals: s.map(d => d.treated) }
       ],
       yMin: 0,
       yMax: Math.max(...s.map(d => Math.max(d.treated, d.control)), 1),
@@ -1896,20 +2062,22 @@ function cumPlot(data, mode) {
   };
 }
 
-// Resolve the fixed factor for a segment: custom override if set, else computed AA factor.
-function cumFactorOf(seg) {
-  if (typeof customFactors !== 'undefined' && customFactors[seg] !== undefined) return customFactors[seg];
-  const c = window._computedFactors ? window._computedFactors[seg] : null;
+// Resolve the fixed factor for a (segment, arm) pair: custom override if set, else computed AA factor.
+function cumFactorOf(seg, arm) {
+  const key = factorKey(seg, arm);
+  if (typeof customFactors !== 'undefined' && customFactors[key] !== undefined) return customFactors[key];
+  const c = window._computedFactors ? window._computedFactors[key] : null;
   return (c === null || c === undefined) ? null : c;
 }
 
-// Build the cumulative series for a segment (or combined across all segments).
+// Build the cumulative series for a segment (or combined across all segments) vs one arm.
 // Effective period adds AC = days strictly after the experiment end date (post-period),
 // derived locally so the rest of the tool's AA/AB/DNU model is untouched.
-function buildCumSeries(rows, seg) {
+function buildCumSeries(rows, seg, arm) {
   const segList = seg === '__combined__'
     ? [...new Set(rows.map(r => r.target_variable_nm || '(unknown)'))]
     : [seg];
+  const bType = baselineType();
 
   const effPeriod = r => {
     if (r.period === 'AA' || r.period === 'AB') return r.period;
@@ -1922,7 +2090,7 @@ function buildCumSeries(rows, seg) {
 
   const filtered = rows
     .filter(r =>
-      (r.cell_type === 'control' || r.cell_type === 'treated') &&
+      (r.cell_type === bType || r.cell_type === arm) &&
       segList.includes(r.target_variable_nm || '(unknown)'))
     .map(r => { r._eff = effPeriod(r); return r; })
     .filter(r => r._eff === 'AA' || r._eff === 'AB' || r._eff === 'AC');
@@ -1938,22 +2106,22 @@ function buildCumSeries(rows, seg) {
   abDays.forEach(d => periodOfDay[d] = 'AB');
   acDays.forEach(d => periodOfDay[d] = 'AC');
 
-  // Per-day treated total and factored-control total.
-  // Combined factors each segment's control by ITS OWN fixed AA factor, then sums.
+  // Per-day arm total and factored-baseline total.
+  // Combined factors each segment's baseline by ITS OWN fixed AA factor for this arm, then sums.
   const perDay = {};
   allDays.forEach(d => perDay[d] = { treated: 0, fctrl: 0, rawCtrl: 0 });
-  let rawAAtreated = 0, rawAAcontrol = 0;
+  let rawAAarm = 0, rawAAbase = 0;
   filtered.forEach(r => {
     const d = perDay[r.day]; if (!d) return;
     const o = parseFloat(r.orders) || 0;
-    if (r.cell_type === 'treated') {
+    if (r.cell_type === arm) {
       d.treated += o;
-      if (r._eff === 'AA') rawAAtreated += o;
+      if (r._eff === 'AA') rawAAarm += o;
     } else {
-      const f = cumFactorOf(r.target_variable_nm || '(unknown)');
+      const f = cumFactorOf(r.target_variable_nm || '(unknown)', arm);
       d.rawCtrl += o;
       d.fctrl   += o * (f === null ? 1 : f);
-      if (r._eff === 'AA') rawAAcontrol += o;
+      if (r._eff === 'AA') rawAAbase += o;
     }
   });
 
@@ -1984,12 +2152,12 @@ function buildCumSeries(rows, seg) {
 
   // Factor shown in the header: single segment -> its factor; combined -> blended AA ratio.
   const headFactor = seg === '__combined__'
-    ? (rawAAcontrol > 0 ? rawAAtreated / rawAAcontrol : null)
-    : cumFactorOf(seg);
+    ? (rawAAbase > 0 ? rawAAarm / rawAAbase : null)
+    : cumFactorOf(seg, arm);
 
   return {
     series, allDays, firstAbDay, firstAcDay, headFactor, blended: seg === '__combined__',
-    hasAC: acDays.length > 0,
+    hasAC: acDays.length > 0, arm, baseType: bType,
     decay: { liftAbEnd, liftAcEnd, acIncremental, abDaily, acDaily, retentionPct }
   };
 }
@@ -2007,12 +2175,13 @@ function fmtDayShort(day) {
 
 function renderCumView() {
   const rows = window._cumRows || [];
-  const data = buildCumSeries(rows, cumActiveSegment);
+  if (!cumActiveArm) return;
+  const data = buildCumSeries(rows, cumActiveSegment, cumActiveArm);
   const s = data.series;
   const container = document.getElementById('cumlift-body');
 
   if (!s.length) {
-    container.innerHTML = `<div class="banner info" style="display:block">No control/treated rows with valid dates for this segment.</div>`;
+    container.innerHTML = `<div class="banner info" style="display:block">No ${data.baseType}/${data.arm} rows with valid dates for this segment.</div>`;
     return;
   }
 
@@ -2050,8 +2219,8 @@ function renderCumView() {
         <div class="stat-val">${factorTxt}</div>
         <div class="stat-lbl">Base AA Factor${data.blended ? ' (blended)' : ''}</div>
       </div>
-      <div class="stat-item"><div class="stat-val green">${fmtFull(last.treated)}</div><div class="stat-lbl">Cum. Treated Orders</div></div>
-      <div class="stat-item"><div class="stat-val blue">${fmtFull(last.control)}</div><div class="stat-lbl">Cum. Factored Control</div></div>
+      <div class="stat-item"><div class="stat-val green">${fmtFull(last.treated)}</div><div class="stat-lbl">Cum. ${data.arm} Orders</div></div>
+      <div class="stat-item"><div class="stat-val blue">${fmtFull(last.control)}</div><div class="stat-lbl">Cum. Factored ${data.baseType}</div></div>
       <div class="stat-item"><div class="stat-val ${liftClass}">${last.lift >= 0 ? '+' : ''}${fmtFull(last.lift)}</div><div class="stat-lbl">Cum. Lift (end)</div></div>
       <div class="stat-item"><div class="stat-val ${liftClass}">${liftPct !== null ? (liftPct >= 0 ? '+' : '') + liftPct.toFixed(2) + '%' : '—'}</div><div class="stat-lbl">Cum. Lift %</div></div>
       ${decayCells}
@@ -2082,9 +2251,9 @@ function renderCumView() {
 
   container.innerHTML = statHTML +
     section('A', 'Cumulative Lift',
-      'Treated minus factored control, accumulated continuously across AA → AB → AC — the running total of incremental orders.',
+      `${data.arm} minus factored ${data.baseType}, accumulated continuously across AA → AB → AC — the running total of incremental orders.`,
       'lift', 'cum-cl', '') +
-    section('B', 'Treated vs Factored Control',
+    section('B', `${data.arm} vs Factored ${data.baseType}`,
       'Absolute cumulative orders for each arm. The gap between the two lines is the cumulative lift shown above.',
       'orders', 'cum-tc', '') +
     section('C', 'Rolling Daily Lift',
@@ -2261,8 +2430,8 @@ function wireCumHover(data, mode, prefix) {
       const liftPct = d.control > 0 ? (d.lift / d.control) * 100 : null;
       const lc = d.lift >= 0 ? 'var(--accent)' : 'var(--warn)';
       bodyHTML =
-        `<div style="color:var(--accent)">treated&nbsp;&nbsp;${fmtFull(d.treated)}</div>` +
-        `<div style="color:var(--accent2)">f.control&nbsp;${fmtFull(d.control)}</div>` +
+        `<div style="color:var(--accent)">${data.arm}&nbsp;&nbsp;${fmtFull(d.treated)}</div>` +
+        `<div style="color:var(--accent2)">f.${data.baseType}&nbsp;${fmtFull(d.control)}</div>` +
         `<div style="color:${lc};margin-top:2px">lift&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;${d.lift >= 0 ? '+' : ''}${fmtFull(d.lift)}${liftPct !== null ? ` (${liftPct >= 0 ? '+' : ''}${liftPct.toFixed(1)}%)` : ''}</div>`;
     }
     tip.innerHTML =
@@ -2295,6 +2464,9 @@ function exportExcel() {
   const wb = XLSX.utils.book_new();
   const rows = window._geoRows || [];
   const segments = [...new Set(rows.map(r => r.target_variable_nm || '(unknown)'))].sort();
+  const bType = baselineType();
+  const arms  = armTypes();
+  const cellTypes = [bType, ...arms];
 
   // ── Sheet 1: Summary Stats ──────────────────────────────────────────────────
   const filtered = excludedPairs.size > 0 ? rows.filter(r => !excludedPairs.has(String(r.pair))) : rows;
@@ -2302,7 +2474,7 @@ function exportExcel() {
   filtered.forEach(r => {
     if (r.period !== 'AA' && r.period !== 'AB') return;
     const ct = r.cell_type || '';
-    if (ct !== 'control' && ct !== 'treated') return;
+    if (!isAnalyzedType(ct)) return;
     const seg = r.target_variable_nm || '(unknown)';
     const key = `${seg}||${ct}||${r.period}`;
     if (!agg[key]) agg[key] = 0;
@@ -2316,25 +2488,30 @@ function exportExcel() {
   hdr.push('Total AA', 'Total AB', 'Total Lift', 'Total Lift %');
   summaryData.push(hdr);
 
-  ['control','treated'].forEach(ct => {
+  cellTypes.forEach(ct => {
+    const isArm = ct !== bType;
     const row = [ct];
     segments.forEach(seg => {
-      const f = customFactors[seg] !== undefined ? customFactors[seg] : (window._computedFactors?.[seg] || null);
+      const key = factorKey(seg, ct);
+      const f = isArm ? (customFactors[key] !== undefined ? customFactors[key] : (window._computedFactors?.[key] ?? null)) : null;
       const rawAA = gagg(seg, ct, 'AA'), rawAB = gagg(seg, ct, 'AB');
-      const aa = ct === 'control' && f ? rawAA * f : rawAA;
-      const ab = ct === 'control' && f ? rawAB * f : rawAB;
-      const factoredCtrlAB = f ? gagg(seg, 'control', 'AB') * f : null;
-      const lift = ct === 'treated' && factoredCtrlAB !== null ? gagg(seg, 'treated', 'AB') - factoredCtrlAB : null;
-      const liftPct = lift !== null && factoredCtrlAB > 0 ? lift / factoredCtrlAB : null;
-      row.push(Math.round(aa), Math.round(ab), ct === 'treated' ? (f || '') : '', lift !== null ? Math.round(lift) : '', liftPct !== null ? parseFloat((liftPct*100).toFixed(2)) : '');
+      const baseAB = gagg(seg, bType, 'AB');
+      const factoredBaseAB = isArm && f ? baseAB * f : null;
+      const lift = isArm && factoredBaseAB !== null ? rawAB - factoredBaseAB : null;
+      const liftPct = lift !== null && factoredBaseAB > 0 ? lift / factoredBaseAB : null;
+      row.push(Math.round(rawAA), Math.round(rawAB), isArm ? (f || '') : '', lift !== null ? Math.round(lift) : '', liftPct !== null ? parseFloat((liftPct*100).toFixed(2)) : '');
     });
     // Totals
-    const tAA = segments.reduce((s, seg) => { const f = customFactors[seg]??window._computedFactors?.[seg]; return s + (ct==='control'&&f ? gagg(seg,ct,'AA')*f : gagg(seg,ct,'AA')); }, 0);
-    const tAB = segments.reduce((s, seg) => { const f = customFactors[seg]??window._computedFactors?.[seg]; return s + (ct==='control'&&f ? gagg(seg,ct,'AB')*f : gagg(seg,ct,'AB')); }, 0);
-    if (ct === 'treated') {
-      const tFCtrlAB = segments.reduce((s,seg) => { const f=customFactors[seg]??window._computedFactors?.[seg]; return s+(f?gagg(seg,'control','AB')*f:0); }, 0);
-      const tLift = tFCtrlAB > 0 ? tAB - tFCtrlAB : null;
-      const tLiftPct = tLift !== null && tFCtrlAB > 0 ? tLift/tFCtrlAB : null;
+    const tAA = segments.reduce((s, seg) => s + gagg(seg, ct, 'AA'), 0);
+    const tAB = segments.reduce((s, seg) => s + gagg(seg, ct, 'AB'), 0);
+    if (isArm) {
+      const tFBaseAB = segments.reduce((s, seg) => {
+        const key = factorKey(seg, ct);
+        const f = customFactors[key] !== undefined ? customFactors[key] : window._computedFactors?.[key];
+        return s + (f ? gagg(seg, bType, 'AB') * f : 0);
+      }, 0);
+      const tLift = tFBaseAB > 0 ? tAB - tFBaseAB : null;
+      const tLiftPct = tLift !== null && tFBaseAB > 0 ? tLift / tFBaseAB : null;
       row.push(Math.round(tAA), Math.round(tAB), tLift !== null ? Math.round(tLift) : '', tLiftPct !== null ? parseFloat((tLiftPct*100).toFixed(2)) : '');
     } else {
       row.push(Math.round(tAA), Math.round(tAB), '', '');
@@ -2343,14 +2520,14 @@ function exportExcel() {
   });
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(summaryData), 'Summary Stats');
 
-  // ── Sheet per segment: Geo Lift ──────────────────────────────────────────────
+  // ── Sheet per segment: Geo Lift (baseline + all arms stacked as rows) ────────
   segments.forEach(seg => {
     const geoData = [['Pair','Cell','DMA','AA','Factor Value','AB','Lift %','Lift']];
     const gagg2 = {}, gmeta = {};
     rows.forEach(r => {
       if ((r.target_variable_nm||'(unknown)') !== seg) return;
       if (r.period !== 'AA' && r.period !== 'AB') return;
-      const ct = r.cell_type||''; if (ct!=='control'&&ct!=='treated') return;
+      const ct = r.cell_type||''; if (!isAnalyzedType(ct)) return;
       const key = `${r.geo_id}||${ct}||${r.period}`;
       if (!gagg2[key]) gagg2[key] = 0;
       gagg2[key] += parseFloat(r.orders)||0;
@@ -2358,71 +2535,88 @@ function exportExcel() {
     });
     const getG2 = (gid, ct, p) => gagg2[`${gid}||${ct}||${p}`]||0;
     const gpairs = {};
-    Object.keys(gmeta).forEach(gid => { const p=gmeta[gid].pair||'—'; if(!gpairs[p])gpairs[p]={control:null,treated:null}; gpairs[p][gmeta[gid].cell_type]=gid; });
-    const sp = Object.keys(gpairs).sort((a,b) => parseInt(a)-parseInt(b)||a.localeCompare(b));
+    Object.keys(gmeta).forEach(gid => { const p=gmeta[gid].pair||'—'; if(!gpairs[p])gpairs[p]={}; gpairs[p][gmeta[gid].cell_type]=gid; });
+    const sp = Object.keys(gpairs).sort((a,b) => {
+      const an = parseInt(a), bn = parseInt(b);
+      return isNaN(an) || isNaN(bn) ? a.localeCompare(b) : (an - bn || a.localeCompare(b));
+    });
+    let tBaseAA = 0, tBaseAB = 0;
+    const tArm = {}; arms.forEach(a => tArm[a] = { aa: 0, ab: 0, liftNum: 0, liftDen: 0 });
     sp.forEach(p => {
-      const cg=gpairs[p].control, tg=gpairs[p].treated;
-      const cAA=cg?getG2(cg,'control','AA'):0, tAA=tg?getG2(tg,'treated','AA'):0;
-      const factor=cAA>0?tAA/cAA:null;
-      ['control','treated'].forEach(ct => {
-        const gid=ct==='control'?cg:tg; if(!gid)return;
-        const rawAA=getG2(gid,ct,'AA'), rawAB=getG2(gid,ct,'AB');
-        const aa=ct==='control'&&factor?rawAA*factor:rawAA;
-        const ab=ct==='control'&&factor?rawAB*factor:rawAB;
-        let fv='', lift='', liftPct='';
-        if (ct==='treated') {
-          fv=factor?parseFloat(factor.toFixed(4)):'';
-          const fctrlAB=factor?getG2(cg,'control','AB')*factor:null;
-          lift=fctrlAB!==null?Math.round(rawAB-fctrlAB):'';
-          liftPct=fctrlAB&&fctrlAB>0?parseFloat(((rawAB-fctrlAB)/fctrlAB*100).toFixed(2)):'';
-        }
-        geoData.push([ct==='control'?p:'', ct, gmeta[gid].DMA, Math.round(aa), fv, Math.round(ab), liftPct, lift]);
+      const baseGid = gpairs[p][bType];
+      const baseAA = baseGid ? getG2(baseGid, bType, 'AA') : 0;
+      const baseAB = baseGid ? getG2(baseGid, bType, 'AB') : 0;
+      if (baseGid) {
+        tBaseAA += baseAA; tBaseAB += baseAB;
+        geoData.push([p, bType, gmeta[baseGid].DMA, Math.round(baseAA), '', Math.round(baseAB), '', '']);
+      }
+      arms.forEach(arm => {
+        const armGid = gpairs[p][arm]; if (!armGid) return;
+        const rawAA = getG2(armGid, arm, 'AA'), rawAB = getG2(armGid, arm, 'AB');
+        const factor = baseAA > 0 ? rawAA / baseAA : null;
+        const factoredBaseAB = factor !== null ? baseAB * factor : null;
+        const lift = factoredBaseAB !== null ? rawAB - factoredBaseAB : null;
+        const liftPct = lift !== null && factoredBaseAB > 0 ? parseFloat((lift/factoredBaseAB*100).toFixed(2)) : '';
+        tArm[arm].aa += rawAA; tArm[arm].ab += rawAB;
+        if (factoredBaseAB !== null) { tArm[arm].liftNum += lift; tArm[arm].liftDen += factoredBaseAB; }
+        geoData.push(['', arm, gmeta[armGid].DMA, Math.round(rawAA), factor !== null ? parseFloat(factor.toFixed(4)) : '', Math.round(rawAB), liftPct, lift !== null ? Math.round(lift) : '']);
       });
     });
-    // Totals row
-    let tCAA=0,tCAB=0,tTAA=0,tTAB=0;
-    sp.forEach(p => {
-      const cg=gpairs[p].control,tg=gpairs[p].treated;
-      const cAA=cg?getG2(cg,'control','AA'):0,tAA=tg?getG2(tg,'treated','AA'):0;
-      const f=cAA>0?tAA/cAA:1;
-      tCAA+=cAA*f; tCAB+=cg?getG2(cg,'control','AB')*f:0;
-      tTAA+=tAA;   tTAB+=tg?getG2(tg,'treated','AB'):0;
+    // Totals rows
+    geoData.push(['Total', bType, '', Math.round(tBaseAA), '', Math.round(tBaseAB), '', '']);
+    arms.forEach(arm => {
+      const t = tArm[arm];
+      const tL = t.liftDen > 0 ? Math.round(t.liftNum) : '';
+      const tLP = t.liftDen > 0 ? parseFloat((t.liftNum/t.liftDen*100).toFixed(2)) : '';
+      geoData.push(['', arm, '', Math.round(t.aa), '', Math.round(t.ab), tLP, tL]);
     });
-    const tL=tCAB>0?Math.round(tTAB-tCAB):'', tLP=tCAB>0?parseFloat(((tTAB-tCAB)/tCAB*100).toFixed(2)):'';
-    geoData.push(['Total','control','',Math.round(tCAA),'',Math.round(tCAB),tLP,tL]);
-    geoData.push(['','treated','',Math.round(tTAA),'',Math.round(tTAB),'','']);
     const sheetName = `Geo - ${seg}`.substring(0, 31);
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(geoData), sheetName);
   });
 
-  // ── Sheet per segment: Daily Factor ─────────────────────────────────────────
+  // ── Sheet per segment: Daily Factor (baseline + all arms stacked as rows) ───
   segments.forEach(seg => {
-    const segRows = rows.filter(r => (r.target_variable_nm||'(unknown)')===seg && (r.period==='AA'||r.period==='AB') && (r.cell_type==='control'||r.cell_type==='treated'));
+    const segRows = rows.filter(r => (r.target_variable_nm||'(unknown)')===seg && (r.period==='AA'||r.period==='AB') && isAnalyzedType(r.cell_type));
     const aaDays=[...new Set(segRows.filter(r=>r.period==='AA').map(r=>r.day))].sort();
     const abDays=[...new Set(segRows.filter(r=>r.period==='AB').map(r=>r.day))].sort();
     const allDays=[...aaDays,...abDays];
     const dayTotals={}, byGeoDay={}, geoMeta2={};
     segRows.forEach(r => {
-      if(!dayTotals[r.day]) dayTotals[r.day]={control:0,treated:0};
-      dayTotals[r.day][r.cell_type]+=parseFloat(r.orders)||0;
+      if(!dayTotals[r.day]) dayTotals[r.day]={};
+      dayTotals[r.day][r.cell_type]=(dayTotals[r.day][r.cell_type]||0)+(parseFloat(r.orders)||0);
       const k=`${r.geo_id}||${r.day}`; if(!byGeoDay[k])byGeoDay[k]=0; byGeoDay[k]+=parseFloat(r.orders)||0;
       if(!geoMeta2[r.geo_id]) geoMeta2[r.geo_id]={DMA:r.DMA||r.geo_id,pair:r.pair||'—',cell_type:r.cell_type};
     });
-    let cumC=0,cumT=0,lastP=null; const cumFactor2={};
-    allDays.forEach(day=>{ const p=aaDays.includes(day)?'AA':'AB'; if(p!==lastP){cumC=0;cumT=0;lastP=p;} cumC+=dayTotals[day]?.control||0; cumT+=dayTotals[day]?.treated||0; cumFactor2[day]=cumC>0?cumT/cumC:null; });
     const hdrRow=['Pair','Cell','DMA',...allDays];
     const dailyData=[hdrRow];
-    dailyData.push(['','Factor Value','',...allDays.map(d=>cumFactor2[d]!==null?parseFloat(cumFactor2[d].toFixed(4)):null)]);
-    dailyData.push(['','control','',...allDays.map(d=>dayTotals[d]?.control||0)]);
-    dailyData.push(['','treated','',...allDays.map(d=>dayTotals[d]?.treated||0)]);
-    const sg2=Object.keys(geoMeta2).sort((a,b)=>{const pa=parseInt(geoMeta2[a].pair)||99999,pb=parseInt(geoMeta2[b].pair)||99999;return pa-pb||geoMeta2[a].cell_type==='control'?-1:1;});
-    let lastPairD=null;
-    sg2.forEach(gid=>{ const m=geoMeta2[gid]; dailyData.push([m.pair, m.cell_type, m.DMA,...allDays.map(d=>byGeoDay[`${gid}||${d}`]||0)]); lastPairD=m.pair; });
-    // Totals rows
-    const tCtrl={}, tTreat={};
-    sg2.forEach(gid=>{ const ct=geoMeta2[gid].cell_type; allDays.forEach(d=>{ const v=byGeoDay[`${gid}||${d}`]||0; if(ct==='control')tCtrl[d]=(tCtrl[d]||0)+v; else tTreat[d]=(tTreat[d]||0)+v; }); });
-    dailyData.push(['Total','control','',...allDays.map(d=>tCtrl[d]||0)]);
-    dailyData.push(['','treated','',...allDays.map(d=>tTreat[d]||0)]);
+
+    let cumBase=0, lastP=null;
+    const cumArm2={}; arms.forEach(a=>cumArm2[a]=0);
+    const cumFactor2={}; arms.forEach(a=>cumFactor2[a]={});
+    allDays.forEach(day=>{
+      const p=aaDays.includes(day)?'AA':'AB';
+      if(p!==lastP){ cumBase=0; arms.forEach(a=>cumArm2[a]=0); lastP=p; }
+      cumBase+=dayTotals[day]?.[bType]||0;
+      arms.forEach(a=>{ cumArm2[a]+=dayTotals[day]?.[a]||0; cumFactor2[a][day]=cumBase>0?cumArm2[a]/cumBase:null; });
+    });
+    arms.forEach(arm => {
+      dailyData.push(['', `Factor Value — ${arm}`, '', ...allDays.map(d=>cumFactor2[arm][d]!==null?parseFloat(cumFactor2[arm][d].toFixed(4)):null)]);
+    });
+    const typeOrder=[bType,...arms];
+    typeOrder.forEach(ct => dailyData.push(['', ct, '', ...allDays.map(d=>dayTotals[d]?.[ct]||0)]));
+
+    const sg2=Object.keys(geoMeta2).sort((a,b)=>{
+      const pa=parseInt(geoMeta2[a].pair)||99999,pb=parseInt(geoMeta2[b].pair)||99999;
+      if (pa!==pb) return pa-pb;
+      return typeOrder.indexOf(geoMeta2[a].cell_type) - typeOrder.indexOf(geoMeta2[b].cell_type);
+    });
+    sg2.forEach(gid=>{ const m=geoMeta2[gid]; dailyData.push([m.pair, m.cell_type, m.DMA,...allDays.map(d=>byGeoDay[`${gid}||${d}`]||0)]); });
+
+    // Totals rows — one per analyzed cell type
+    const totalByTypeDay2={}; typeOrder.forEach(t=>totalByTypeDay2[t]={});
+    sg2.forEach(gid=>{ const ct=geoMeta2[gid].cell_type; allDays.forEach(d=>{ const v=byGeoDay[`${gid}||${d}`]||0; totalByTypeDay2[ct][d]=(totalByTypeDay2[ct][d]||0)+v; }); });
+    typeOrder.forEach((ct,i) => dailyData.push([i===0?'Total':'', ct, '', ...allDays.map(d=>totalByTypeDay2[ct][d]||0)]));
+
     const sheetName2 = `Daily - ${seg}`.substring(0, 31);
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(dailyData), sheetName2);
   });
