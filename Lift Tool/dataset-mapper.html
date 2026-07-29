@@ -1976,7 +1976,7 @@ function renderDailySegment(rows, seg) {
 // ── Cumulative Lift Over Time ──────────────────────────────────────────────────
 let cumActiveSegment = '__combined__';
 let cumActiveArm = null; // one arm at a time — overlaying 3+ lines would be unreadable
-let cumMode = 'orders'; // 'orders' = arm vs factored baseline · 'lift' = cumulative lift · 'rolling' = rolling daily lift
+let cumTopMode = 'lift'; // controls section A: 'lift' = cumulative lift · 'daily' = aggregate (non-cumulative) lift
 let cumRollWindow = 7;  // trailing-day window for rolling lift
 
 function renderCumLift(rows) {
@@ -1985,7 +1985,7 @@ function renderCumLift(rows) {
   const arms = armTypes();
   cumActiveSegment = '__combined__';
   cumActiveArm = arms[0] || null;
-  cumMode = 'orders';
+  cumTopMode = 'lift';
 
   document.getElementById('cumlift-arm-tabs').innerHTML = arms.map((arm, i) =>
     `<button class="seg-tab${i === 0 ? ' active' : ''}" onclick="selectCumArm('${arm.replace(/'/g,"\\'")}', this)">${arm}</button>`
@@ -2014,8 +2014,10 @@ function selectCumSegment(seg, btn) {
   renderCumView();
 }
 
-function setCumMode(mode) {
-  cumMode = mode;
+function setCumTopMode(mode, btn) {
+  cumTopMode = mode;
+  document.querySelectorAll('#cum-top-toggle .seg-tab').forEach(t => t.classList.remove('active'));
+  if (btn) btn.classList.add('active');
   renderCumView();
 }
 
@@ -2044,6 +2046,13 @@ function cumPlot(data, mode) {
     const vals = s.map(d => d.lift);
     return {
       series: [{ key: 'lift', color: 'var(--accent)', label: 'cumulative lift', vals }],
+      yMin: Math.min(0, ...vals), yMax: Math.max(0, ...vals), zero: true, band: false
+    };
+  }
+  if (mode === 'daily') {
+    const vals = s.map(d => d.dLift);
+    return {
+      series: [{ key: 'daily', color: 'var(--accent)', label: 'daily lift (non-cumulative)', vals }],
       yMin: Math.min(0, ...vals), yMax: Math.max(0, ...vals), zero: true, band: false
     };
   }
@@ -2186,9 +2195,20 @@ function renderCumView() {
   }
 
   const last  = s[s.length - 1];
+  const n     = s.length;
   const liftPct = last.control > 0 ? (last.lift / last.control) * 100 : null;
   const factorTxt = data.headFactor !== null ? data.headFactor.toFixed(4) : '—';
   const liftClass = last.lift >= 0 ? 'green' : 'warn';
+  const isDaily = cumTopMode === 'daily';
+
+  // top-bar figures swap between cumulative totals and per-day averages to match section A
+  const armVal   = isDaily ? last.treated / n : last.treated;
+  const baseVal  = isDaily ? last.control / n : last.control;
+  const liftVal  = isDaily ? last.lift / n    : last.lift;
+  const armLbl   = isDaily ? `Avg Daily ${data.arm} Orders`            : `Cumulative ${data.arm} Orders`;
+  const baseLbl  = isDaily ? `Avg Daily Factored ${data.baseType}`     : `Cumulative Factored ${data.baseType}`;
+  const liftLbl  = isDaily ? 'Avg Daily Lift'                          : 'Cumulative Lift (end)';
+  const liftPctLbl = isDaily ? 'Lift %' : 'Cumulative Lift %';
 
   // ── Stat header ───────────────────────────────────────────────────────────
   let decayCells = '';
@@ -2219,10 +2239,10 @@ function renderCumView() {
         <div class="stat-val">${factorTxt}</div>
         <div class="stat-lbl">Base AA Factor${data.blended ? ' (blended)' : ''}</div>
       </div>
-      <div class="stat-item"><div class="stat-val green">${fmtFull(last.treated)}</div><div class="stat-lbl">Cum. ${data.arm} Orders</div></div>
-      <div class="stat-item"><div class="stat-val blue">${fmtFull(last.control)}</div><div class="stat-lbl">Cum. Factored ${data.baseType}</div></div>
-      <div class="stat-item"><div class="stat-val ${liftClass}">${last.lift >= 0 ? '+' : ''}${fmtFull(last.lift)}</div><div class="stat-lbl">Cum. Lift (end)</div></div>
-      <div class="stat-item"><div class="stat-val ${liftClass}">${liftPct !== null ? (liftPct >= 0 ? '+' : '') + liftPct.toFixed(2) + '%' : '—'}</div><div class="stat-lbl">Cum. Lift %</div></div>
+      <div class="stat-item"><div class="stat-val green">${fmtFull(armVal)}</div><div class="stat-lbl">${armLbl}</div></div>
+      <div class="stat-item"><div class="stat-val blue">${fmtFull(baseVal)}</div><div class="stat-lbl">${baseLbl}</div></div>
+      <div class="stat-item"><div class="stat-val ${liftClass}">${liftVal >= 0 ? '+' : ''}${fmtFull(liftVal)}</div><div class="stat-lbl">${liftLbl}</div></div>
+      <div class="stat-item"><div class="stat-val ${liftClass}">${liftPct !== null ? (liftPct >= 0 ? '+' : '') + liftPct.toFixed(2) + '%' : '—'}</div><div class="stat-lbl">${liftPctLbl}</div></div>
       ${decayCells}
     </div>`;
 
@@ -2249,10 +2269,19 @@ function renderCumView() {
       <span style="font-family:var(--mono);font-size:.7rem;color:var(--muted);">days</span>
     </div>`;
 
+  const topToggle = `
+    <div id="cum-top-toggle" style="display:flex;gap:8px;margin-bottom:10px;">
+      <button class="seg-tab${isDaily ? '' : ' active'}" onclick="setCumTopMode('lift', this)">Cumulative</button>
+      <button class="seg-tab${isDaily ? ' active' : ''}" onclick="setCumTopMode('daily', this)">Aggregate</button>
+    </div>`;
+
+  const topTitle = isDaily ? 'Aggregate Lift' : 'Cumulative Lift';
+  const topSub = isDaily
+    ? `${data.arm} minus factored ${data.baseType} for each individual day — not accumulated and not smoothed, so it shows the raw daily lift magnitude.`
+    : `${data.arm} minus factored ${data.baseType}, accumulated continuously across AA → AB → AC — the running total of incremental orders.`;
+
   container.innerHTML = statHTML +
-    section('A', 'Cumulative Lift',
-      `${data.arm} minus factored ${data.baseType}, accumulated continuously across AA → AB → AC — the running total of incremental orders.`,
-      'lift', 'cum-cl', '') +
+    section('A', topTitle, topSub, isDaily ? 'daily' : 'lift', 'cum-cl', topToggle) +
     section('B', `${data.arm} vs Factored ${data.baseType}`,
       'Absolute cumulative orders for each arm. The gap between the two lines is the cumulative lift shown above.',
       'orders', 'cum-tc', '') +
@@ -2260,7 +2289,7 @@ function renderCumView() {
       'Per-day lift smoothed over a trailing window — for mail, the ramp off zero is the in-home lag and the return to zero is the decay.',
       'rolling', 'cum-rl', rollControl);
 
-  wireCumHover(data, 'lift',    'cum-cl');
+  wireCumHover(data, isDaily ? 'daily' : 'lift', 'cum-cl');
   wireCumHover(data, 'orders',  'cum-tc');
   wireCumHover(data, 'rolling', 'cum-rl');
 }
@@ -2426,6 +2455,9 @@ function wireCumHover(data, mode, prefix) {
       bodyHTML =
         `<div style="color:${rc}">rolling&nbsp;&nbsp;${rollVal >= 0 ? '+' : ''}${fmtFull(rollVal)}/day</div>` +
         `<div style="color:${dc};margin-top:1px">today&nbsp;&nbsp;&nbsp;&nbsp;${d.dLift >= 0 ? '+' : ''}${fmtFull(d.dLift)}</div>`;
+    } else if (mode === 'daily') {
+      const dc = d.dLift >= 0 ? 'var(--accent)' : 'var(--warn)';
+      bodyHTML = `<div style="color:${dc}">daily lift&nbsp;&nbsp;${d.dLift >= 0 ? '+' : ''}${fmtFull(d.dLift)}</div>`;
     } else {
       const liftPct = d.control > 0 ? (d.lift / d.control) * 100 : null;
       const lc = d.lift >= 0 ? 'var(--accent)' : 'var(--warn)';
