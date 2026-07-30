@@ -639,6 +639,7 @@ td.highlight { background: rgba(20,184,166,.05); }
   <!-- TAB: Summary Stats -->
   <div id="tab-summary" class="hidden">
     <div class="section-label"><span class="section-num">03</span> Summary Statistics</div>
+    <div id="summary-category-tabs" style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;"></div>
     <div id="summary-pivot" class="table-outer" style="margin-bottom:12px;">
       <div class="table-scroll">
         <table class="pivot-table">
@@ -676,7 +677,8 @@ td.highlight { background: rgba(20,184,166,.05); }
   <!-- TAB: Geo Lift -->
   <div id="tab-geo" class="hidden">
     <div class="section-label"><span class="section-num">04</span> Geo Level Lift Analysis</div>
-    <div id="geo-segment-tabs" style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;"></div>
+    <div id="geo-segment-tabs" style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;"></div>
+    <div id="geo-category-tabs" style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;"></div>
     <div id="geo-table-container" class="table-outer" style="margin-bottom:8px;">
       <div class="table-scroll">
         <table class="pivot-table" id="geo-table">
@@ -693,7 +695,8 @@ td.highlight { background: rgba(20,184,166,.05); }
   <!-- TAB: Daily Factor -->
   <div id="tab-daily" class="hidden">
     <div class="section-label"><span class="section-num">05</span> Daily Cumulative Factor</div>
-    <div id="daily-segment-tabs" style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;"></div>
+    <div id="daily-segment-tabs" style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;"></div>
+    <div id="daily-category-tabs" style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;"></div>
     <div class="table-outer" style="margin-bottom:8px;">
       <div class="table-scroll" id="daily-table-scroll">
         <table class="pivot-table" id="daily-table">
@@ -711,7 +714,8 @@ td.highlight { background: rgba(20,184,166,.05); }
   <div id="tab-cumlift" class="hidden">
     <div class="section-label"><span class="section-num">06</span> Lift</div>
     <div id="cumlift-arm-tabs" style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;"></div>
-    <div id="cumlift-segment-tabs" style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;"></div>
+    <div id="cumlift-segment-tabs" style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;"></div>
+    <div id="cumlift-category-tabs" style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;"></div>
     <div id="cumlift-body"></div>
     <div id="cumlift-footnote" style="font-family:var(--mono);font-size:.65rem;color:var(--muted);margin:10px 0 36px;">
       Baseline is factored by the fixed base AA factor (arm AA ÷ baseline AA) — held constant across every day, not recomputed daily ·
@@ -915,6 +919,10 @@ function distinctCellTypes() {
     if (ct) set.add(ct);
   });
   return [...set];
+}
+
+function distinctCategories(rows) {
+  return [...new Set(rows.map(r => r.category_nm || '(unknown)'))].filter(Boolean).sort();
 }
 
 function matchedHeaders() {
@@ -1360,6 +1368,23 @@ function applyFilters() {
 
 // ── AA Summary pivot ──────────────────────────────────────────────────────────
 const customFactors = {}; // factorKey(seg, arm) -> overridden factor value (null = use computed)
+let summaryActiveCategory = '__combined__';
+
+function renderSummaryCategoryTabs(rows) {
+  const el = document.getElementById('summary-category-tabs');
+  if (!el) return;
+  const categories = distinctCategories(rows);
+  if (categories.length <= 1) { el.innerHTML = ''; return; }
+  el.innerHTML = `<button class="seg-tab${summaryActiveCategory === '__combined__' ? ' active' : ''}" onclick="selectSummaryCategory('__combined__', this)">All Categories</button>` +
+    categories.map(c => `<button class="seg-tab${c === summaryActiveCategory ? ' active' : ''}" onclick="selectSummaryCategory('${c.replace(/'/g, "\\'")}', this)">${c}</button>`).join('');
+}
+
+function selectSummaryCategory(cat, btn) {
+  document.querySelectorAll('#summary-category-tabs .seg-tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  summaryActiveCategory = cat;
+  renderAASummary(window._geoRows);
+}
 
 function adjustFactor(key, delta) {
   const current = customFactors[key] !== undefined ? customFactors[key] : window._computedFactors?.[key];
@@ -1383,10 +1408,15 @@ function commitFactorInput(key) {
 }
 
 function renderAASummary(rows) {
+  renderSummaryCategoryTabs(rows);
+  const catRows = summaryActiveCategory === '__combined__'
+    ? rows
+    : rows.filter(r => (r.category_nm || '(unknown)') === summaryActiveCategory);
+
   // Filter out excluded pairs
   const filtered = excludedPairs.size > 0
-    ? rows.filter(r => !excludedPairs.has(String(r.pair)))
-    : rows;
+    ? catRows.filter(r => !excludedPairs.has(String(r.pair)))
+    : catRows;
 
   // Get all unique segments dynamically
   const segments = [...new Set(filtered.map(r => r.target_variable_nm || '(unknown)'))].sort();
@@ -1755,15 +1785,39 @@ function renderGeoRows(rows) {
   document.getElementById('geo-body').innerHTML = html;
 }
 
-function renderGeoTotals(rows) {
-  geoSegments = [...new Set(rows.map(r => r.target_variable_nm || '(unknown)'))].sort();
-  geoActiveSegment = geoSegments[0] || null;
-  renderGeoRows(rows);
+let geoActiveCategory = '__combined__';
+
+function geoApplyFilters(rows) {
+  let r = rows;
+  if (geoActiveSegment && geoActiveSegment !== '__combined__') {
+    r = r.filter(x => (x.target_variable_nm || '(unknown)') === geoActiveSegment);
+  }
+  if (geoActiveCategory && geoActiveCategory !== '__combined__') {
+    r = r.filter(x => (x.category_nm || '(unknown)') === geoActiveCategory);
+  }
+  return r;
+}
+
+function renderGeoCategoryTabs(rows) {
+  const el = document.getElementById('geo-category-tabs');
+  if (!el) return;
+  const categories = distinctCategories(rows);
+  if (categories.length <= 1) { el.innerHTML = ''; return; }
+  el.innerHTML = `<button class="seg-tab${geoActiveCategory === '__combined__' ? ' active' : ''}" onclick="selectGeoCategory('__combined__', this)">All Categories</button>` +
+    categories.map(c => `<button class="seg-tab${c === geoActiveCategory ? ' active' : ''}" onclick="selectGeoCategory('${c.replace(/'/g, "\\'")}', this)">${c}</button>`).join('');
+}
+
+function selectGeoCategory(cat, btn) {
+  document.querySelectorAll('#geo-category-tabs .seg-tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  geoActiveCategory = cat;
+  renderGeoRows(geoApplyFilters(window._geoRows));
 }
 
 function renderGeoTable(rows) {
   geoSegments = [...new Set(rows.map(r => r.target_variable_nm || '(unknown)'))].sort();
-  geoActiveSegment = geoSegments[0] || null;
+  geoActiveSegment = '__combined__';
+  geoActiveCategory = '__combined__';
 
   // Build tabs — Combined first, then per-segment
   document.getElementById('geo-segment-tabs').innerHTML =
@@ -1772,38 +1826,55 @@ function renderGeoTable(rows) {
       `<button class="seg-tab" onclick="selectGeoSegment('${seg.replace(/'/g,"\\'")}', this)">${seg}</button>`
     ).join('');
 
-  renderGeoTotals(rows);
+  renderGeoCategoryTabs(rows);
+  renderGeoRows(geoApplyFilters(rows));
 }
 
 function selectGeoSegment(seg, btn) {
   document.querySelectorAll('#geo-segment-tabs .seg-tab').forEach(t => t.classList.remove('active'));
   btn.classList.add('active');
-  if (seg === '__combined__') {
-    renderGeoTotals(window._geoRows);
-  } else {
-    renderGeoSegment(window._geoRows, seg);
-  }
-}
-
-function renderGeoSegment(rows, seg) {
-  renderGeoRows(rows.filter(r => (r.target_variable_nm || '(unknown)') === seg));
+  geoActiveSegment = seg;
+  renderGeoRows(geoApplyFilters(window._geoRows));
 }
 
 // ── Daily Cumulative Factor ───────────────────────────────────────────────────
+let dailyActiveSegment = null;
+let dailyActiveCategory = '__combined__';
+
 function renderDailyFactor(rows) {
   const segments = [...new Set(rows.map(r => r.target_variable_nm || '(unknown)'))].sort();
   window._dailyRows = rows;
+  dailyActiveCategory = '__combined__';
 
   document.getElementById('daily-segment-tabs').innerHTML = segments.map((seg, i) =>
     `<button class="seg-tab${i === 0 ? ' active' : ''}" onclick="selectDailySegment('${seg.replace(/'/g,"\\'")}', this)">${seg}</button>`
   ).join('');
 
-  renderDailySegment(rows, segments[0] || null);
+  renderDailyCategoryTabs(rows);
+  dailyActiveSegment = segments[0] || null;
+  renderDailySegment(rows, dailyActiveSegment);
+}
+
+function renderDailyCategoryTabs(rows) {
+  const el = document.getElementById('daily-category-tabs');
+  if (!el) return;
+  const categories = distinctCategories(rows);
+  if (categories.length <= 1) { el.innerHTML = ''; return; }
+  el.innerHTML = `<button class="seg-tab${dailyActiveCategory === '__combined__' ? ' active' : ''}" onclick="selectDailyCategory('__combined__', this)">All Categories</button>` +
+    categories.map(c => `<button class="seg-tab${c === dailyActiveCategory ? ' active' : ''}" onclick="selectDailyCategory('${c.replace(/'/g, "\\'")}', this)">${c}</button>`).join('');
+}
+
+function selectDailyCategory(cat, btn) {
+  document.querySelectorAll('#daily-category-tabs .seg-tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  dailyActiveCategory = cat;
+  renderDailySegment(window._dailyRows, dailyActiveSegment);
 }
 
 function selectDailySegment(seg, btn) {
   document.querySelectorAll('#daily-segment-tabs .seg-tab').forEach(t => t.classList.remove('active'));
   btn.classList.add('active');
+  dailyActiveSegment = seg;
   renderDailySegment(window._dailyRows, seg);
 }
 
@@ -1817,7 +1888,8 @@ function renderDailySegment(rows, seg) {
   const filtered = rows.filter(r =>
     (r.target_variable_nm || '(unknown)') === seg &&
     (r.period === 'AA' || r.period === 'AB') &&
-    isAnalyzedType(r.cell_type)
+    isAnalyzedType(r.cell_type) &&
+    (dailyActiveCategory === '__combined__' || (r.category_nm || '(unknown)') === dailyActiveCategory)
   );
 
   // Get sorted unique days, grouped by period
@@ -1978,6 +2050,7 @@ let cumActiveSegment = '__combined__';
 let cumActiveArm = null; // one arm at a time — overlaying 3+ lines would be unreadable
 let cumTopMode = 'lift'; // controls section A: 'lift' = cumulative lift · 'daily' = aggregate (non-cumulative) lift
 let cumRollWindow = 7;  // trailing-day window for rolling lift
+let cumActiveCategory = '__combined__';
 
 function renderCumLift(rows) {
   window._cumRows = rows;
@@ -1986,6 +2059,7 @@ function renderCumLift(rows) {
   cumActiveSegment = '__combined__';
   cumActiveArm = arms[0] || null;
   cumTopMode = 'lift';
+  cumActiveCategory = '__combined__';
 
   document.getElementById('cumlift-arm-tabs').innerHTML = arms.map((arm, i) =>
     `<button class="seg-tab${i === 0 ? ' active' : ''}" onclick="selectCumArm('${arm.replace(/'/g,"\\'")}', this)">${arm}</button>`
@@ -1997,6 +2071,24 @@ function renderCumLift(rows) {
       `<button class="seg-tab" onclick="selectCumSegment('${seg.replace(/'/g,"\\'")}', this)">${seg}</button>`
     ).join('');
 
+  renderCumCategoryTabs(rows);
+
+  renderCumView();
+}
+
+function renderCumCategoryTabs(rows) {
+  const el = document.getElementById('cumlift-category-tabs');
+  if (!el) return;
+  const categories = distinctCategories(rows);
+  if (categories.length <= 1) { el.innerHTML = ''; return; }
+  el.innerHTML = `<button class="seg-tab${cumActiveCategory === '__combined__' ? ' active' : ''}" onclick="selectCumCategory('__combined__', this)">All Categories</button>` +
+    categories.map(c => `<button class="seg-tab${c === cumActiveCategory ? ' active' : ''}" onclick="selectCumCategory('${c.replace(/'/g, "\\'")}', this)">${c}</button>`).join('');
+}
+
+function selectCumCategory(cat, btn) {
+  document.querySelectorAll('#cumlift-category-tabs .seg-tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  cumActiveCategory = cat;
   renderCumView();
 }
 
@@ -2183,7 +2275,10 @@ function fmtDayShort(day) {
 }
 
 function renderCumView() {
-  const rows = window._cumRows || [];
+  let rows = window._cumRows || [];
+  if (cumActiveCategory !== '__combined__') {
+    rows = rows.filter(r => (r.category_nm || '(unknown)') === cumActiveCategory);
+  }
   if (!cumActiveArm) return;
   const data = buildCumSeries(rows, cumActiveSegment, cumActiveArm);
   const s = data.series;
