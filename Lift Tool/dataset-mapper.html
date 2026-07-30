@@ -2578,24 +2578,22 @@ function wireCumHover(data, mode, prefix) {
 }
 
 // ── Excel Export ──────────────────────────────────────────────────────────────
-function exportExcel() {
-  if (typeof XLSX === 'undefined') {
-    showBanner('warn', 'Loading export library, please try again in a moment…');
-    const s = document.createElement('script');
-    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
-    s.onload = () => { showBanner(''); exportExcel(); };
-    document.head.appendChild(s);
-    return;
+// Sheet names must be <=31 chars and unique; truncate and de-dupe centrally so
+// every sheet-adding call site (summary/geo/daily, combined and per-category) stays simple.
+function addUniqueSheet(wb, wsName, aoa) {
+  let name = wsName.substring(0, 31);
+  const existing = new Set(wb.SheetNames);
+  let i = 2;
+  while (existing.has(name)) {
+    const suffix = ` (${i})`;
+    name = wsName.substring(0, 31 - suffix.length) + suffix;
+    i++;
   }
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), name);
+}
 
-  const wb = XLSX.utils.book_new();
-  const rows = window._geoRows || [];
+function buildSummarySheet(wb, rows, labelSuffix, bType, arms, cellTypes) {
   const segments = [...new Set(rows.map(r => r.target_variable_nm || '(unknown)'))].sort();
-  const bType = baselineType();
-  const arms  = armTypes();
-  const cellTypes = [bType, ...arms];
-
-  // ── Sheet 1: Summary Stats ──────────────────────────────────────────────────
   const filtered = excludedPairs.size > 0 ? rows.filter(r => !excludedPairs.has(String(r.pair))) : rows;
   const agg = {};
   filtered.forEach(r => {
@@ -2645,9 +2643,11 @@ function exportExcel() {
     }
     summaryData.push(row);
   });
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(summaryData), 'Summary Stats');
+  addUniqueSheet(wb, `Summary Stats${labelSuffix}`, summaryData);
+}
 
-  // ── Sheet per segment: Geo Lift (baseline + all arms stacked as rows) ────────
+function buildGeoSheets(wb, rows, labelSuffix, bType, arms) {
+  const segments = [...new Set(rows.map(r => r.target_variable_nm || '(unknown)'))].sort();
   segments.forEach(seg => {
     const geoData = [['Pair','Cell','DMA','AA','Factor Value','AB','Lift %','Lift']];
     const gagg2 = {}, gmeta = {};
@@ -2697,11 +2697,12 @@ function exportExcel() {
       const tLP = t.liftDen > 0 ? parseFloat((t.liftNum/t.liftDen*100).toFixed(2)) : '';
       geoData.push(['', arm, '', Math.round(t.aa), '', Math.round(t.ab), tLP, tL]);
     });
-    const sheetName = `Geo - ${seg}`.substring(0, 31);
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(geoData), sheetName);
+    addUniqueSheet(wb, `Geo - ${seg}${labelSuffix}`, geoData);
   });
+}
 
-  // ── Sheet per segment: Daily Factor (baseline + all arms stacked as rows) ───
+function buildDailySheets(wb, rows, labelSuffix, bType, arms) {
+  const segments = [...new Set(rows.map(r => r.target_variable_nm || '(unknown)'))].sort();
   segments.forEach(seg => {
     const segRows = rows.filter(r => (r.target_variable_nm||'(unknown)')===seg && (r.period==='AA'||r.period==='AB') && isAnalyzedType(r.cell_type));
     const aaDays=[...new Set(segRows.filter(r=>r.period==='AA').map(r=>r.day))].sort();
@@ -2744,14 +2745,44 @@ function exportExcel() {
     sg2.forEach(gid=>{ const ct=geoMeta2[gid].cell_type; allDays.forEach(d=>{ const v=byGeoDay[`${gid}||${d}`]||0; totalByTypeDay2[ct][d]=(totalByTypeDay2[ct][d]||0)+v; }); });
     typeOrder.forEach((ct,i) => dailyData.push([i===0?'Total':'', ct, '', ...allDays.map(d=>totalByTypeDay2[ct][d]||0)]));
 
-    const sheetName2 = `Daily - ${seg}`.substring(0, 31);
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(dailyData), sheetName2);
+    addUniqueSheet(wb, `Daily - ${seg}${labelSuffix}`, dailyData);
+  });
+}
+
+function exportExcel() {
+  if (typeof XLSX === 'undefined') {
+    showBanner('warn', 'Loading export library, please try again in a moment…');
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    s.onload = () => { showBanner(''); exportExcel(); };
+    document.head.appendChild(s);
+    return;
+  }
+
+  const wb = XLSX.utils.book_new();
+  const allRows = window._geoRows || [];
+  const bType = baselineType();
+  const arms  = armTypes();
+  const cellTypes = [bType, ...arms];
+
+  // Build every sheet once for the full dataset ("" suffix) and again per
+  // category if the file actually has more than one — so a single-category
+  // upload exports exactly like before, with no empty/duplicate sheets.
+  const categories = distinctCategories(allRows);
+  const groups = categories.length > 1
+    ? [{ label: '', rows: allRows }, ...categories.map(c => ({ label: ` - ${c}`, rows: allRows.filter(r => (r.category_nm || '(unknown)') === c) }))]
+    : [{ label: '', rows: allRows }];
+
+  groups.forEach(({ label, rows }) => {
+    buildSummarySheet(wb, rows, label, bType, arms, cellTypes);
+    buildGeoSheets(wb, rows, label, bType, arms);
+    buildDailySheets(wb, rows, label, bType, arms);
   });
 
   // ── Sheet: Full Dataset ──────────────────────────────────────────────────────
   if (mergedRows.length) {
     const dsData = [DISPLAY_COLS, ...mergedRows.map(r => DISPLAY_COLS.map(c => r[c] || ''))];
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(dsData), 'Full Dataset');
+    addUniqueSheet(wb, 'Full Dataset', dsData);
   }
 
   XLSX.writeFile(wb, 'demandgen_analysis.xlsx');
