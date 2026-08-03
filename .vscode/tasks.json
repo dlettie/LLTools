@@ -1,0 +1,14 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "rename-roi-studio-html",
+			"type": "shell",
+			"command": "mv",
+			"args": [
+				"ROI Studio/ROI-Studio",
+				"ROI Studio/ROI-Studio.html"
+			]
+		}
+	]
+}
