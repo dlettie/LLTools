@@ -1,86 +1,67 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>LLTools</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<style>
-:root {
-  --bg:      #f7f8fa;
-  --surface: #ffffff;
-  --border:  #e7e9ef;
-  --text:    #1a1d29;
-  --muted:   #6b7280;
-  --accent:  #14b8a6;
-  --sans:    'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
-}
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-body {
-  font-family: var(--sans);
-  background: var(--bg);
-  color: var(--text);
-  min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-}
-.wrap { width: 100%; max-width: 640px; }
-h1 { font-size: 1.5rem; font-weight: 700; margin-bottom: 6px; }
-.sub { color: var(--muted); margin-bottom: 28px; font-size: .95rem; }
-.card-list { display: flex; flex-direction: column; gap: 12px; }
-a.card {
-  display: block;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 18px 20px;
-  text-decoration: none;
-  color: inherit;
-  transition: border-color .15s ease, transform .15s ease;
-}
-a.card:hover { border-color: var(--accent); transform: translateY(-1px); }
-.card-title { font-weight: 600; font-size: 1.05rem; margin-bottom: 4px; }
-.card-desc { color: var(--muted); font-size: .88rem; }
-</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="LLTools unified experiment and model analysis workspace.">
+  <title>LLTools | Workspace</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root { --bg:#f7f8fa; --surface:#ffffff; --border:#e7e9ef; --border-strong:#d7dbe4; --text:#1a1d29; --muted:#6b7280; --accent:#14b8a6; --accent-soft:rgba(20,184,166,.08); --accent-secondary:#8b5cf6; --secondary-soft:rgba(139,92,246,.07); --sans:"Inter",ui-sans-serif,system-ui,-apple-system,sans-serif; }
+    * { box-sizing:border-box; } body { min-width:320px; margin:0; overflow:hidden; background:var(--bg); color:var(--text); font-family:var(--sans); -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility; } button { font:inherit; cursor:pointer; }
+    .app { display:grid; grid-template-columns:276px minmax(0,1fr); height:100vh; }.sidebar { display:flex; flex-direction:column; overflow-y:auto; background:var(--surface); color:var(--text); padding:24px 16px 18px; border-right:1px solid var(--border); }.brand { display:flex; align-items:center; gap:10px; padding:0 8px 29px; color:var(--text); text-decoration:none; font-size:18px; font-weight:700; letter-spacing:-.02em; }.brand-mark { display:grid; place-items:center; width:31px; height:31px; border-radius:6px; background:var(--accent); color:#fff; font:700 11px var(--sans); letter-spacing:.02em; }
+    .nav-title { margin:0 8px 9px; color:var(--muted); font:600 10px var(--sans); letter-spacing:.08em; text-transform:uppercase; }.nav-group + .nav-title { margin-top:25px; }.nav-group { display:grid; gap:3px; }.module-button { display:grid; grid-template-columns:26px minmax(0,1fr); align-items:center; width:100%; gap:10px; padding:10px 9px; border:1px solid transparent; border-radius:6px; background:transparent; color:var(--muted); text-align:left; font-size:13px; font-weight:600; transition:background .15s ease,color .15s ease,border-color .15s ease; }.module-button:hover { background:var(--accent-soft); color:var(--text); }.module-button.active { background:var(--accent-soft); border-color:rgba(20,184,166,.3); color:var(--accent); }.module-icon { display:grid; place-items:center; width:25px; height:25px; border:1px solid var(--border-strong); border-radius:5px; color:var(--muted); font:600 9px var(--sans); }.module-button.active .module-icon { border-color:rgba(20,184,166,.4); color:var(--accent); background:rgba(20,184,166,.04); }.sidebar-foot { margin-top:auto; padding:23px 8px 1px; color:var(--muted); font-size:11px; line-height:1.55; }.privacy-dot { display:inline-block; width:6px; height:6px; margin-right:6px; border-radius:50%; background:var(--accent); }
+    .workspace { display:grid; grid-template-rows:72px minmax(0,1fr); min-width:0; }.workspace-bar { display:flex; align-items:center; justify-content:space-between; gap:18px; padding:0 28px; background:rgba(255,255,255,.82); border-bottom:1px solid var(--border); }.location { min-width:0; }.location-label { display:block; margin-bottom:2px; color:var(--muted); font:600 10px var(--sans); letter-spacing:.08em; text-transform:uppercase; }.location h1 { overflow:hidden; margin:0; color:var(--text); text-overflow:ellipsis; white-space:nowrap; font-size:15px; font-weight:500; letter-spacing:0; }.module-kind { flex:none; padding:5px 8px; border:1px solid rgba(20,184,166,.3); border-radius:4px; background:var(--accent-soft); color:var(--accent); font:600 10px var(--sans); letter-spacing:.06em; text-transform:uppercase; }.stage { position:relative; min-height:0; background:var(--bg); }.tool-frame { display:block; width:100%; height:100%; border:0; background:var(--bg); }.loading { position:absolute; z-index:1; inset:0; display:grid; place-items:center; background:var(--bg); color:var(--muted); font:12px var(--sans); transition:opacity .2s ease,visibility .2s ease; }.loading.hidden { visibility:hidden; opacity:0; pointer-events:none; }.loading span { display:flex; align-items:center; gap:9px; }.loading i { width:10px; height:10px; border-radius:50%; background:var(--accent); animation:pulse 1s ease-in-out infinite; } @keyframes pulse { 50% { opacity:.35; transform:scale(.7); } }
+    @media (max-width:760px) { body { overflow:auto; }.app { display:flex; flex-direction:column; height:100vh; }.sidebar { order:0; flex:none; overflow-x:auto; overflow-y:hidden; min-height:137px; padding:13px 14px 10px; }.brand { padding:0 2px 11px; font-size:16px; }.brand-mark { width:27px; height:27px; }.nav-title { display:none; }.nav-group { display:flex; width:max-content; gap:7px; }.nav-group + .nav-title { margin:0; }.nav-group + .nav-group { margin-top:7px; }.module-button { display:flex; width:auto; gap:7px; padding:7px 9px; white-space:nowrap; font-size:11px; }.module-icon { width:20px; height:20px; font-size:9px; }.sidebar-foot { display:none; }.workspace { flex:1; min-height:0; }.workspace-bar { min-height:60px; padding:0 16px; }.location h1 { font-size:14px; }.module-kind { font-size:9px; }.location-label { font-size:9px; } }
+  </style>
 </head>
 <body>
-<div class="wrap">
-  <h1>LLTools</h1>
-  <p class="sub">Pick a tool to open.</p>
-  <div class="card-list">
-    <a class="card" href="Lift Tool/">
-      <div class="card-title">Dataset Mapper</div>
-      <div class="card-desc">DemandGen dataset mapping tool.</div>
-    </a>
-    <a class="card" href="SlidingWindow/">
-      <div class="card-title">Sliding Window</div>
-      <div class="card-desc">Rolling window analysis tool.</div>
-    </a>
-    <a class="card" href="Marketing Calendar Visualizer/Marketing Calendar Visualizer.html">
-      <div class="card-title">Marketing Calendar &amp; Analytics Studio</div>
-      <div class="card-desc">Plan, visualize, and analyze marketing calendars.</div>
-    </a>
-    <a class="card" href="Multiplicative Experiment Model Analyzer/Multiplicative_Experiment_Model_Analyzer (8).html">
-      <div class="card-title">Multiplicative Experiment Model Analyzer</div>
-      <div class="card-desc">Compare actual and predicted experiment performance.</div>
-    </a>
-    <a class="card" href="ROI Analysis Studio/LiftLab_ROI_Analysis_Studio (7).html">
-      <div class="card-title">LiftLab ROI Analysis Studio</div>
-      <div class="card-desc">Analyze model results and ROI performance.</div>
-    </a>
-    <a class="card" href="MDE Calculator/mdecalculator.html">
-      <div class="card-title">MDE Calculator</div>
-      <div class="card-desc">Calculate minimum detectable effects for paired DMA experiments.</div>
-    </a>
-    <a class="card" href="ROI Studio/roi-studio.html">
-      <div class="card-title">ROI Studio</div>
-      <div class="card-desc">ROI planning and analysis workspace.</div>
-    </a>
+  <div class="app">
+    <aside class="sidebar" aria-label="LLTools capabilities">
+      <a class="brand" href="#" aria-label="LLTools home"><span class="brand-mark">LL</span>LLTools</a>
+      <p class="nav-title">Experiments</p>
+      <nav class="nav-group" aria-label="Experiment capabilities">
+        <button class="module-button active" type="button" data-src="MDE%20Calculator/mdecalculator.html" data-title="MDE Calculator" data-kind="Experiments"><span class="module-icon">MDE</span><span>MDE Calculator</span></button>
+        <button class="module-button" type="button" data-src="Lift%20Tool/dataset-mapper.html" data-title="Dataset Mapper" data-kind="Experiments"><span class="module-icon">DM</span><span>Dataset Mapper</span></button>
+        <button class="module-button" type="button" data-src="Multiplicative%20Experiment%20Model%20Analyzer/Multiplicative_Experiment_Model_Analyzer%20(8).html" data-title="Experiment Model Analyzer" data-kind="Experiments"><span class="module-icon">EM</span><span>Experiment Model Analyzer</span></button>
+        <button class="module-button" type="button" data-src="SlidingWindow/RollingWindowAnalysis_NB_V1.html" data-title="Sliding Window" data-kind="Experiments"><span class="module-icon">SW</span><span>Sliding Window</span></button>
+      </nav>
+      <p class="nav-title">Model Analysis</p>
+      <nav class="nav-group" aria-label="Model analysis capabilities">
+        <button class="module-button" type="button" data-src="Marketing%20Calendar%20Visualizer/Marketing%20Calendar%20Visualizer.html" data-title="Marketing Calendar" data-kind="Model Analysis"><span class="module-icon">MC</span><span>Marketing Calendar</span></button>
+        <button class="module-button" type="button" data-src="ROI%20Analysis%20Studio/LiftLab_ROI_Analysis_Studio%20(7).html" data-title="ROI Analysis Studio" data-kind="Model Analysis"><span class="module-icon">ROI</span><span>ROI Analysis Studio</span></button>
+        <button class="module-button" type="button" data-src="ROI%20Studio/roi-studio.html" data-title="ROI Studio" data-kind="Model Analysis"><span class="module-icon">ROI</span><span>ROI Studio</span></button>
+      </nav>
+      <div class="sidebar-foot"><span class="privacy-dot"></span>Browser-based tools<br>Data stays on your device.</div>
+    </aside>
+    <main class="workspace">
+      <header class="workspace-bar">
+        <div class="location"><span class="location-label">Capability</span><h1 id="tool-title">MDE Calculator</h1></div>
+        <span class="module-kind" id="tool-kind">Experiments</span>
+      </header>
+      <section class="stage" aria-label="Selected capability workspace">
+        <div class="loading" id="loading" aria-live="polite"><span><i></i>Loading capability</span></div>
+        <iframe class="tool-frame" id="tool-frame" title="MDE Calculator" src="MDE%20Calculator/mdecalculator.html"></iframe>
+      </section>
+    </main>
   </div>
-</div>
+  <script>
+    const buttons = document.querySelectorAll('.module-button');
+    const frame = document.querySelector('#tool-frame');
+    const title = document.querySelector('#tool-title');
+    const kind = document.querySelector('#tool-kind');
+    const loading = document.querySelector('#loading');
+    buttons.forEach((button) => button.addEventListener('click', () => {
+      buttons.forEach((item) => item.classList.toggle('active', item === button));
+      title.textContent = button.dataset.title;
+      kind.textContent = button.dataset.kind;
+      frame.title = button.dataset.title;
+      loading.classList.remove('hidden');
+      frame.src = button.dataset.src;
+    }));
+    frame.addEventListener('load', () => loading.classList.add('hidden'));
+  </script>
 </body>
 </html>

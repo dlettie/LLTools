@@ -5,23 +5,26 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="description" content="Analyze a multiplicative experiment model with actual versus predicted performance and order-space decomposition.">
   <title>Multiplicative Experiment Model Analyzer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
     :root {
-      --ink: #172033;
-      --muted: #667085;
-      --line: #d9dee8;
+      --ink: #1a1d29;
+      --muted: #6b7280;
+      --line: #e7e9ef;
       --panel: #ffffff;
-      --canvas: #f3f5f8;
-      --navy: #172b4d;
-      --blue: #2f6fed;
-      --blue-soft: #eaf1ff;
-      --teal: #0b8f7a;
-      --teal-soft: #e4f5f1;
-      --gold: #c9871b;
-      --gold-soft: #fff3d9;
-      --red: #c2413b;
+      --canvas: #f7f8fa;
+      --navy: #1a1d29;
+      --blue: #14b8a6;
+      --blue-soft: rgba(20,184,166,.08);
+      --teal: #14b8a6;
+      --teal-soft: rgba(20,184,166,.08);
+      --gold: #f59e0b;
+      --gold-soft: #fff7e6;
+      --red: #ef4444;
       --red-soft: #fff0ef;
-      --shadow: 0 12px 35px rgba(23, 32, 51, 0.08);
+      --shadow: 0 12px 35px rgba(26,29,41,.08);
     }
 
     * { box-sizing: border-box; }
@@ -55,9 +58,7 @@
       padding: 32px 34px;
       border-radius: 20px;
       color: #fff;
-      background:
-        radial-gradient(circle at 87% 18%, rgba(72, 144, 255, 0.34), transparent 27%),
-        linear-gradient(125deg, #142542 0%, #1d3d70 70%, #2459a3 100%);
+      background: linear-gradient(125deg, #14b8a6 0%, #0f9488 100%);
       box-shadow: var(--shadow);
     }
 
