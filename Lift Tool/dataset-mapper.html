@@ -26,6 +26,7 @@
 html { scroll-behavior: smooth; }
 body {
   font-family: var(--sans);
+  font-size: 14px;
   background: var(--bg);
   color: var(--text);
   min-height: 100vh;
@@ -51,7 +52,7 @@ table, th, td, .stat-val, .date-field input, .tctl-input, input[type=number] { f
 }
 .header-logo {
   font-family: var(--sans);
-  font-size: .72rem;
+  font-size: 12px;
   font-weight: 700;
   color: #ffffff;
   letter-spacing: .04em;
@@ -62,9 +63,9 @@ table, th, td, .stat-val, .date-field input, .tctl-input, input[type=number] { f
   border-radius: 6px;
 }
 .header-title {
-  font-size: .9rem;
-  font-weight: 500;
-  color: var(--muted);
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text);
 }
 .step-bar {
   margin-left: auto;
@@ -72,7 +73,7 @@ table, th, td, .stat-val, .date-field input, .tctl-input, input[type=number] { f
   align-items: center;
   gap: 0;
   font-family: var(--mono);
-  font-size: .72rem;
+  font-size: 12px;
 }
 .step-item {
   display: flex;
@@ -96,7 +97,7 @@ table, th, td, .stat-val, .date-field input, .tctl-input, input[type=number] { f
 /* ── Section headers ─────────────────────────────────────────────────────── */
 .section-label {
   font-family: var(--sans);
-  font-size: .98rem;
+  font-size: 16px;
   letter-spacing: -.01em;
   text-transform: none;
   font-weight: 700;
@@ -114,7 +115,7 @@ table, th, td, .stat-val, .date-field input, .tctl-input, input[type=number] { f
 }
 .section-num {
   font-family: var(--sans);
-  font-size: .68rem;
+  font-size: 12px;
   font-weight: 600;
   color: var(--accent);
   background: rgba(20,184,166,.1);
@@ -153,19 +154,19 @@ table, th, td, .stat-val, .date-field input, .tctl-input, input[type=number] { f
 }
 .upload-label {
   font-weight: 600;
-  font-size: .88rem;
+  font-size: 14px;
   margin-bottom: 4px;
   color: var(--text);
 }
 .upload-desc {
-  font-size: .78rem;
+  font-size: 12px;
   color: var(--muted);
   line-height: 1.5;
 }
 .upload-status {
   margin-top: 10px;
   font-family: var(--mono);
-  font-size: .72rem;
+  font-size: 12px;
   color: var(--accent2);
   min-height: 16px;
 }
@@ -182,7 +183,7 @@ table, th, td, .stat-val, .date-field input, .tctl-input, input[type=number] { f
 .date-field { display: flex; flex-direction: column; gap: 6px; }
 .date-field label {
   font-family: var(--mono);
-  font-size: .72rem;
+  font-size: 12px;
   letter-spacing: .08em;
   color: var(--muted);
   text-transform: uppercase;
@@ -193,7 +194,7 @@ table, th, td, .stat-val, .date-field input, .tctl-input, input[type=number] { f
   border-radius: 6px;
   color: var(--text);
   font-family: var(--mono);
-  font-size: .9rem;
+  font-size: 14px;
   padding: 9px 14px;
   outline: none;
   transition: border-color .2s;
@@ -202,7 +203,7 @@ table, th, td, .stat-val, .date-field input, .tctl-input, input[type=number] { f
 .date-field input[type=date]:focus { border-color: var(--accent); }
 .date-computed {
   font-family: var(--mono);
-  font-size: .78rem;
+  font-size: 12px;
   color: var(--warn);
   padding: 9px 0;
   min-width: 240px;
@@ -211,7 +212,7 @@ table, th, td, .stat-val, .date-field input, .tctl-input, input[type=number] { f
 /* ── Process button ──────────────────────────────────────────────────────── */
 .btn-process {
   font-family: var(--sans);
-  font-size: .85rem;
+  font-size: 14px;
   font-weight: 600;
   letter-spacing: 0;
   text-transform: none;
@@ -257,7 +258,7 @@ table, th, td, .stat-val, .date-field input, .tctl-input, input[type=number] { f
 .stat-val.green { color: var(--accent); }
 .stat-val.blue  { color: var(--accent2); }
 .stat-val.warn  { color: var(--warn); }
-.stat-lbl { font-size: .76rem; color: var(--muted); }
+.stat-lbl { font-size: 12px; color: var(--muted); }
 
 /* ── Period legend ───────────────────────────────────────────────────────── */
 .period-legend {
@@ -268,7 +269,7 @@ table, th, td, .stat-val, .date-field input, .tctl-input, input[type=number] { f
 }
 .plabel {
   font-family: var(--mono);
-  font-size: .72rem;
+  font-size: 12px;
   padding: 3px 10px;
   border-radius: 3px;
   font-weight: 600;
@@ -291,7 +292,7 @@ table, th, td, .stat-val, .date-field input, .tctl-input, input[type=number] { f
   border-radius: 5px;
   color: var(--text);
   font-family: var(--mono);
-  font-size: .78rem;
+  font-size: 14px;
   padding: 7px 12px;
   outline: none;
   transition: border-color .2s;
@@ -300,7 +301,7 @@ table, th, td, .stat-val, .date-field input, .tctl-input, input[type=number] { f
 .tctl-input::placeholder { color: var(--muted); }
 .tctl-label {
   font-family: var(--mono);
-  font-size: .72rem;
+  font-size: 12px;
   color: var(--muted);
   display: flex;
   align-items: center;
@@ -309,7 +310,7 @@ table, th, td, .stat-val, .date-field input, .tctl-input, input[type=number] { f
 .row-count {
   margin-left: auto;
   font-family: var(--mono);
-  font-size: .72rem;
+  font-size: 12px;
   color: var(--muted);
 }
 
@@ -321,13 +322,13 @@ table, th, td, .stat-val, .date-field input, .tctl-input, input[type=number] { f
   margin-bottom: 12px;
 }
 .table-scroll { overflow-x: auto; max-height: 520px; overflow-y: auto; }
-table { width: 100%; border-collapse: collapse; font-size: .78rem; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
 thead tr { background: #f3f4f6; position: sticky; top: 0; z-index: 10; }
 th {
   padding: 11px 13px;
   text-align: left;
   font-family: var(--sans);
-  font-size: .72rem;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 0;
   color: var(--muted);
@@ -348,7 +349,7 @@ td {
   border-right: 1px solid var(--border);
   white-space: nowrap;
   font-family: var(--sans);
-  font-size: .8rem;
+  font-size: 13px;
   color: #374151;
 }
 tr:hover td { background: rgba(20,184,166,.04); }
@@ -361,7 +362,7 @@ td.highlight { background: rgba(20,184,166,.05); }
   padding: 2px 7px;
   border-radius: 3px;
   font-family: var(--mono);
-  font-size: .68rem;
+  font-size: 12px;
   font-weight: 600;
 }
 .tag-baseline { background: rgba(139,92,246,.15); color: var(--accent2); }
@@ -382,7 +383,7 @@ td.highlight { background: rgba(20,184,166,.05); }
   align-items: center;
   gap: 8px;
   font-family: var(--mono);
-  font-size: .75rem;
+  font-size: 12px;
   color: var(--muted);
 }
 .pg-btn {
@@ -392,7 +393,7 @@ td.highlight { background: rgba(20,184,166,.05); }
   border-radius: 4px;
   padding: 5px 13px;
   font-family: var(--mono);
-  font-size: .75rem;
+  font-size: 12px;
   cursor: pointer;
   transition: all .15s;
 }
@@ -404,7 +405,7 @@ td.highlight { background: rgba(20,184,166,.05); }
   border-radius: 6px;
   padding: 12px 16px;
   font-family: var(--mono);
-  font-size: .78rem;
+  font-size: 14px;
   margin-bottom: 16px;
   display: none;
 }
@@ -414,7 +415,7 @@ td.highlight { background: rgba(20,184,166,.05); }
 
 .pair-chip {
   font-family: var(--mono);
-  font-size: .75rem;
+  font-size: 14px;
   font-weight: 400;
   padding: 7px 14px;
   border-radius: 4px;
@@ -436,7 +437,7 @@ td.highlight { background: rgba(20,184,166,.05); }
 
 .seg-tab {
   font-family: var(--mono);
-  font-size: .75rem;
+  font-size: 14px;
   font-weight: 600;
   padding: 6px 16px;
   border-radius: 4px;
@@ -452,18 +453,18 @@ td.highlight { background: rgba(20,184,166,.05); }
 .td-lift-pos { color: var(--accent); font-weight: 600; }
 .td-lift-neg { color: var(--warn); font-weight: 600; }
 
-.td-heat { text-align: center; font-family: var(--mono); font-size: .72rem; font-weight: 600; }
-.td-daily-num { text-align: right; font-family: var(--sans); font-size: .76rem; color: #374151; }
+.td-heat { text-align: center; font-family: var(--mono); font-size: 12px; font-weight: 600; }
+.td-daily-num { text-align: right; font-family: var(--sans); font-size: 13px; color: #374151; }
 .td-dma { color: var(--text); max-width: 200px; overflow: hidden; text-overflow: ellipsis; }
 .daily-period-sep th, .daily-period-sep td { border-left: 3px solid var(--accent) !important; }
 
 /* ── Summary pivot table ─────────────────────────────────────────────────── */
-.pivot-table { width: 100%; border-collapse: collapse; font-size: .78rem; }
+.pivot-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .pivot-table th {
   padding: 11px 13px;
   text-align: left;
   font-family: var(--sans);
-  font-size: .72rem;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 0;
   color: var(--muted);
@@ -478,7 +479,7 @@ td.highlight { background: rgba(20,184,166,.05); }
   border-bottom: 1px solid var(--border);
   border-right: 1px solid var(--border);
   font-family: var(--sans);
-  font-size: .8rem;
+  font-size: 13px;
   color: #374151;
   white-space: nowrap;
 }
@@ -498,7 +499,7 @@ td.highlight { background: rgba(20,184,166,.05); }
 .tab-bar.visible { display: flex; }
 .tab-item {
   font-family: var(--sans);
-  font-size: .82rem;
+  font-size: 14px;
   font-weight: 500;
   letter-spacing: 0;
   text-transform: none;
@@ -532,7 +533,7 @@ td.highlight { background: rgba(20,184,166,.05); }
 }
 .role-row .role-tag { min-width: 84px; }
 .role-row select.tctl-input { min-width: 190px; }
-.role-exclude { font-family: var(--mono); font-size: .72rem; color: var(--muted); display: flex; align-items: center; gap: 6px; margin-left: auto; }
+.role-exclude { font-family: var(--mono); font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 6px; margin-left: auto; }
 
 /* ── Hidden ──────────────────────────────────────────────────────────────── */
 .hidden { display: none !important; }
@@ -554,7 +555,7 @@ td.highlight { background: rgba(20,184,166,.05); }
   <div class="tab-item" onclick="switchTab('cumlift')">Lift</div>
   <div class="tab-item" onclick="switchTab('dataset')">Full Dataset</div>
   <div style="margin-left:auto;display:flex;align-items:center;padding-right:36px;">
-    <button onclick="exportExcel()" style="font-family:var(--mono);font-size:.72rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;background:none;border:1px solid var(--accent);color:var(--accent);border-radius:4px;padding:5px 14px;cursor:pointer;transition:all .15s;" onmouseover="this.style.background='rgba(20,184,166,.1)'" onmouseout="this.style.background='none'">⬇ Export Excel</button>
+    <button onclick="exportExcel()" style="font-family:var(--mono);font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;background:none;border:1px solid var(--accent);color:var(--accent);border-radius:4px;padding:5px 14px;cursor:pointer;transition:all .15s;" onmouseover="this.style.background='rgba(20,184,166,.1)'" onmouseout="this.style.background='none'">⬇ Export Excel</button>
   </div>
 </div>
 
@@ -596,13 +597,13 @@ td.highlight { background: rgba(20,184,166,.05); }
   <!-- Step 1b: Map Cell Roles -->
   <div id="role-map-section" style="display:none;">
     <div class="section-label"><span class="section-num">02</span> Map Cell Roles</div>
-    <div style="font-family:var(--mono);font-size:.78rem;color:var(--muted);margin-bottom:16px;">
+    <div style="font-family:var(--mono);font-size:12px;color:var(--muted);margin-bottom:16px;">
       Tell us which cell is the baseline and which Matched Markets column holds each cell's DMA IDs.
     </div>
     <div class="role-row">
       <span class="tag tag-baseline role-tag">baseline</span>
       <select class="tctl-input" id="role-baseline-type" onchange="onBaselineTypeChange()"></select>
-      <span style="font-family:var(--mono);font-size:.72rem;color:var(--muted);">DMA ID column</span>
+      <span style="font-family:var(--mono);font-size:12px;color:var(--muted);">DMA ID column</span>
       <select class="tctl-input" id="role-baseline-col" onchange="onRoleFieldChange()"></select>
     </div>
     <div id="role-arm-rows"></div>
@@ -647,7 +648,7 @@ td.highlight { background: rgba(20,184,166,.05); }
         </table>
       </div>
     </div>
-    <div id="summary-footnote" style="font-family:var(--mono);font-size:.65rem;color:var(--muted);margin-bottom:36px;">
+    <div id="summary-footnote" style="font-family:var(--mono);font-size:12px;color:var(--muted);margin-bottom:36px;">
       Factor value = arm orders ÷ baseline orders &nbsp;·&nbsp; baseline AA &amp; AB shown raw (unfactored) &nbsp;·&nbsp; lift = arm AB − factored baseline AB
     </div>
 
@@ -660,24 +661,24 @@ td.highlight { background: rgba(20,184,166,.05); }
         </table>
       </div>
     </div>
-    <div id="window-lift-note" style="font-family:var(--mono);font-size:.65rem;color:var(--muted);margin-bottom:36px;">
+    <div id="window-lift-note" style="font-family:var(--mono);font-size:12px;color:var(--muted);margin-bottom:36px;">
       Same fixed base AA factor as above, applied to each window · <span style="color:var(--accent2)">AB</span> lift = treated AB − factored control AB ·
       <span style="color:#6366f1">AC</span> lift = treated AC − factored control AC · AC = days after AB end through the AC end date (post-period)
     </div>
 
     <div class="section-label"><span class="section-num">↓</span> Filter Pairs</div>
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
-      <button onclick="selectAllPairs()" style="font-family:var(--mono);font-size:.68rem;color:var(--muted);background:none;border:1px solid var(--border2);border-radius:3px;padding:3px 10px;cursor:pointer;">select all</button>
-      <button onclick="clearAllPairs()" style="font-family:var(--mono);font-size:.68rem;color:var(--muted);background:none;border:1px solid var(--border2);border-radius:3px;padding:3px 10px;cursor:pointer;">clear all</button>
+      <button onclick="selectAllPairs()" style="font-family:var(--mono);font-size:12px;color:var(--muted);background:none;border:1px solid var(--border2);border-radius:3px;padding:3px 10px;cursor:pointer;">select all</button>
+      <button onclick="clearAllPairs()" style="font-family:var(--mono);font-size:12px;color:var(--muted);background:none;border:1px solid var(--border2);border-radius:3px;padding:3px 10px;cursor:pointer;">clear all</button>
     </div>
     <div id="pair-filter-chips" style="display:flex;flex-direction:column;gap:6px;margin-bottom:36px;"></div>
 
     <div class="section-label"><span class="section-num">08</span> Pair Diagnostics</div>
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
-      <button onclick="downloadPairDiagnosticsCSV()" style="font-family:var(--mono);font-size:.68rem;color:var(--muted);background:none;border:1px solid var(--border2);border-radius:3px;padding:3px 10px;cursor:pointer;">download csv</button>
-      <span id="pairdiag-count" style="font-family:var(--mono);font-size:.68rem;color:var(--muted);"></span>
+      <button onclick="downloadPairDiagnosticsCSV()" style="font-family:var(--mono);font-size:12px;color:var(--muted);background:none;border:1px solid var(--border2);border-radius:3px;padding:3px 10px;cursor:pointer;">download csv</button>
+      <span id="pairdiag-count" style="font-family:var(--mono);font-size:12px;color:var(--muted);"></span>
     </div>
-    <div id="pairdiag-empty" style="font-family:var(--mono);font-size:.72rem;color:var(--muted);margin-bottom:8px;">Run Build Mapped Dataset to generate diagnostics.</div>
+    <div id="pairdiag-empty" style="font-family:var(--mono);font-size:12px;color:var(--muted);margin-bottom:8px;">Run Build Mapped Dataset to generate diagnostics.</div>
     <div class="table-outer" id="pairdiag-wrap" style="display:none;margin-bottom:36px;">
       <div class="table-scroll">
         <table class="pivot-table">
@@ -701,7 +702,7 @@ td.highlight { background: rgba(20,184,166,.05); }
         </table>
       </div>
     </div>
-    <div id="geo-footnote" style="font-family:var(--mono);font-size:.65rem;color:var(--muted);margin-bottom:36px;">
+    <div id="geo-footnote" style="font-family:var(--mono);font-size:12px;color:var(--muted);margin-bottom:36px;">
       Baseline AA &amp; AB shown raw · each arm's AA &amp; AB are factored · Lift = arm AB − factored baseline AB · Lift % = lift ÷ factored baseline AB
     </div>
   </div>
@@ -719,7 +720,7 @@ td.highlight { background: rgba(20,184,166,.05); }
         </table>
       </div>
     </div>
-    <div id="daily-footnote" style="font-family:var(--mono);font-size:.65rem;color:var(--muted);margin-bottom:36px;">
+    <div id="daily-footnote" style="font-family:var(--mono);font-size:12px;color:var(--muted);margin-bottom:36px;">
       Factor value = cumulative arm ÷ cumulative baseline · resets at AA start and AB start · color = distance from 1.0
     </div>
   </div>
@@ -731,7 +732,7 @@ td.highlight { background: rgba(20,184,166,.05); }
     <div id="cumlift-segment-tabs" style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;"></div>
     <div id="cumlift-category-tabs" style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;"></div>
     <div id="cumlift-body"></div>
-    <div id="cumlift-footnote" style="font-family:var(--mono);font-size:.65rem;color:var(--muted);margin:10px 0 36px;">
+    <div id="cumlift-footnote" style="font-family:var(--mono);font-size:12px;color:var(--muted);margin:10px 0 36px;">
       Baseline is factored by the fixed base AA factor (arm AA ÷ baseline AA) — held constant across every day, not recomputed daily ·
       <span style="color:#6366f1">AC</span> = days after the AB end through the AC end date (or open-ended if blank) ·
       <b>Cumulative</b> shows total magnitude; <b>Rolling</b> shows the daily lift rate — for mail, the rolling curve reveals the in-home lag
@@ -1084,7 +1085,7 @@ function rebuildArmRows() {
   document.getElementById('role-arm-rows').innerHTML = armRowState.map((a, i) => `
     <div class="role-row">
       <span class="tag tag-arm${i} role-tag">${a.cellType}</span>
-      <span style="font-family:var(--mono);font-size:.72rem;color:var(--muted);">DMA ID column</span>
+      <span style="font-family:var(--mono);font-size:12px;color:var(--muted);">DMA ID column</span>
       <select class="tctl-input" onchange="onArmColChange(${i}, this.value)" ${a.excluded ? 'disabled' : ''}>
         <option value="">— choose column —</option>
         ${headers.map(h => `<option value="${h}"${h === a.idCol ? ' selected' : ''}>${h}</option>`).join('')}
@@ -1707,10 +1708,10 @@ function renderAASummary(rows) {
         <th class="th-factor" style="border-right:2px solid var(--border2)">Lift %</th>
       `;
     }).join('')}
-    <th style="border-left:2px solid var(--accent);background:rgba(20,184,166,.04);color:var(--muted);font-family:var(--mono);font-size:.68rem;text-transform:uppercase;">AA</th>
-    <th style="background:rgba(20,184,166,.04);color:var(--muted);font-family:var(--mono);font-size:.68rem;text-transform:uppercase;">AB</th>
-    <th style="background:rgba(20,184,166,.04);color:var(--accent);font-family:var(--mono);font-size:.68rem;text-transform:uppercase;">Lift</th>
-    <th style="background:rgba(20,184,166,.04);color:var(--accent);font-family:var(--mono);font-size:.68rem;text-transform:uppercase;border-right:none">Lift %</th>
+    <th style="border-left:2px solid var(--accent);background:rgba(20,184,166,.04);color:var(--muted);font-family:var(--mono);font-size:12px;text-transform:uppercase;">AA</th>
+    <th style="background:rgba(20,184,166,.04);color:var(--muted);font-family:var(--mono);font-size:12px;text-transform:uppercase;">AB</th>
+    <th style="background:rgba(20,184,166,.04);color:var(--accent);font-family:var(--mono);font-size:12px;text-transform:uppercase;">Lift</th>
+    <th style="background:rgba(20,184,166,.04);color:var(--accent);font-family:var(--mono);font-size:12px;text-transform:uppercase;border-right:none">Lift %</th>
   </tr>`;
 
   document.getElementById('pivot-head').innerHTML = headRow1 + headRow2;
@@ -1752,7 +1753,7 @@ function renderAASummary(rows) {
                 onchange="handleFactorInput('${keyEsc}', this.value)"
                 onblur="commitFactorInput('${keyEsc}')"
                 onkeydown="if(event.key==='Enter')commitFactorInput('${keyEsc}')"
-                style="width:72px;background:var(--surface);border:1px solid ${isCustom ? 'var(--warn)' : 'var(--border2)'};border-radius:4px;color:var(--${fClass || 'text'});font-family:var(--mono);font-size:.82rem;font-weight:600;padding:3px 6px;outline:none;text-align:center;"/>
+                style="width:72px;background:var(--surface);border:1px solid ${isCustom ? 'var(--warn)' : 'var(--border2)'};border-radius:4px;color:var(--${fClass || 'text'});font-family:var(--mono);font-size:13px;font-weight:600;padding:3px 6px;outline:none;text-align:center;"/>
               <div style="display:flex;flex-direction:column;gap:1px;">
                 <button onclick="adjustFactor('${keyEsc}', 0.01)"  style="font-size:.6rem;line-height:1;padding:1px 4px;background:var(--surface);border:1px solid var(--border2);border-radius:2px;color:var(--muted);cursor:pointer;">▲</button>
                 <button onclick="adjustFactor('${keyEsc}', -0.01)" style="font-size:.6rem;line-height:1;padding:1px 4px;background:var(--surface);border:1px solid var(--border2);border-radius:2px;color:var(--muted);cursor:pointer;">▼</button>
@@ -2069,7 +2070,7 @@ function renderGeoRows(rows) {
   });
 
   if (model.unmatchedRows.length) {
-    html += `<tr class="geo-pair-sep"><td colspan="8" style="font-family:var(--mono);font-size:.68rem;color:var(--warn);background:rgba(245,158,11,.08);">Unmatched geos (excluded from lift math)</td></tr>`;
+    html += `<tr class="geo-pair-sep"><td colspan="8" style="font-family:var(--mono);font-size:12px;color:var(--warn);background:rgba(245,158,11,.08);">Unmatched geos (excluded from lift math)</td></tr>`;
     model.unmatchedRows.forEach(r => {
       html += `<tr>
         <td>—</td>
@@ -2087,7 +2088,7 @@ function renderGeoRows(rows) {
   // Totals rows: baseline (raw) + one per arm
   html += `
     <tr style="border-top:3px solid var(--border2);background:rgba(20,184,166,.03);">
-      <td style="font-family:var(--mono);font-size:.68rem;font-weight:600;color:var(--accent);">Total</td>
+      <td style="font-family:var(--mono);font-size:12px;font-weight:600;color:var(--accent);">Total</td>
       <td><span class="tag ${tagClassFor(bType)}">${bType}</span></td><td></td>
       <td>${fmtN(model.baseTotalAA)}</td><td class="td-factor">—</td><td>${fmtN(model.baseTotalAB)}</td>
       <td class="td-factor">—</td><td class="td-factor" style="border-right:none">—</td>
@@ -2315,7 +2316,7 @@ function renderDailySegment(rows, seg) {
       return `<td class="td-heat" style="${style}">${f !== null ? f.toFixed(3) : '—'}</td>`;
     }).join('');
     return `<tr style="background:#f3f4f6;">
-      <td colspan="3" style="font-family:var(--mono);font-size:.68rem;font-weight:600;color:var(--accent);letter-spacing:.06em;text-transform:uppercase;padding:8px 13px;">Factor Value — ${arm}</td>
+      <td colspan="3" style="font-family:var(--mono);font-size:12px;font-weight:600;color:var(--accent);letter-spacing:.06em;text-transform:uppercase;padding:8px 13px;">Factor Value — ${arm}</td>
       ${cells}
     </tr>`;
   }).join('');
@@ -2323,7 +2324,7 @@ function renderDailySegment(rows, seg) {
   // Per-type per-day summary rows: baseline then each arm
   const summaryRows = typeOrder.map(ct => `
     <tr style="background:#f3f4f6;border-bottom:2px solid var(--border2);">
-      <td colspan="2" style="font-family:var(--mono);font-size:.65rem;color:var(--muted);padding:4px 13px;">${ct}</td>
+      <td colspan="2" style="font-family:var(--mono);font-size:12px;color:var(--muted);padding:4px 13px;">${ct}</td>
       <td></td>
       ${allDays.map(day => {
         const isAbStart = day === firstAbDay;
@@ -2368,7 +2369,7 @@ function renderDailySegment(rows, seg) {
       return `<td class="td-daily-num" style="${isAbStart ? 'border-left:3px solid var(--accent);' : ''}">${fmtN(totalByTypeDay[ct][day] || 0)}</td>`;
     }).join('');
     return `<tr style="${i === 0 ? 'border-top:3px solid var(--border2);' : ''}background:rgba(20,184,166,.03);">
-      <td style="font-family:var(--mono);font-size:.68rem;font-weight:600;color:var(--accent);">${i === 0 ? 'Total' : ''}</td>
+      <td style="font-family:var(--mono);font-size:12px;font-weight:600;color:var(--accent);">${i === 0 ? 'Total' : ''}</td>
       <td><span class="tag ${tagClassFor(ct)}">${ct}</span></td>
       <td></td>
       ${cells}
@@ -2681,8 +2682,8 @@ function renderCumView() {
     </div>`;
 
   // ── Stacked lift sections ──────────────────────────────────────────────────
-  const tipStyle = 'position:absolute;pointer-events:none;display:none;background:var(--surface);border:1px solid var(--border2);border-radius:5px;padding:7px 10px;font-family:var(--mono);font-size:.7rem;color:var(--text);z-index:20;white-space:nowrap;box-shadow:0 4px 16px rgba(0,0,0,.4);';
-  const subStyle = 'font-family:var(--mono);font-size:.66rem;color:var(--muted);margin:-4px 0 10px;';
+  const tipStyle = 'position:absolute;pointer-events:none;display:none;background:var(--surface);border:1px solid var(--border2);border-radius:5px;padding:7px 10px;font-family:var(--mono);font-size:12px;color:var(--text);z-index:20;white-space:nowrap;box-shadow:0 4px 16px rgba(0,0,0,.4);';
+  const subStyle = 'font-family:var(--mono);font-size:12px;color:var(--muted);margin:-4px 0 10px;';
 
   const section = (num, title, sub, mode, prefix, control) => `
     <div style="margin-top:26px;">
@@ -2697,10 +2698,10 @@ function renderCumView() {
 
   const rollControl = `
     <div style="display:flex;gap:8px;margin-bottom:10px;align-items:center;">
-      <span style="font-family:var(--mono);font-size:.7rem;color:var(--muted);">smoothing window</span>
+      <span style="font-family:var(--mono);font-size:12px;color:var(--muted);">smoothing window</span>
       <input type="number" min="1" max="60" value="${cumRollWindow}" onchange="setCumRoll(this.value)"
-        style="width:54px;background:var(--surface);border:1px solid var(--border2);border-radius:4px;color:var(--text);font-family:var(--mono);font-size:.78rem;padding:3px 6px;text-align:center;outline:none;">
-      <span style="font-family:var(--mono);font-size:.7rem;color:var(--muted);">days</span>
+        style="width:54px;background:var(--surface);border:1px solid var(--border2);border-radius:4px;color:var(--text);font-family:var(--mono);font-size:13px;padding:3px 6px;text-align:center;outline:none;">
+      <span style="font-family:var(--mono);font-size:12px;color:var(--muted);">days</span>
     </div>`;
 
   const topToggle = `
