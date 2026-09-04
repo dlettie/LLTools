@@ -1,0 +1,819 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Paired DMA & Synthetic Controls MDE Calculator</title>
+  <style>
+    :root {
+      --bg: #f8fafc;
+      --card-bg: #ffffff;
+      --text: #1e293b;
+      --border: #e2e8f0;
+      --primary: #2563eb;
+      --primary-hover: #1d4ed8;
+      --success: #16a34a;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      margin: 0;
+      padding: 30px 20px;
+    }
+    .container {
+      max-width: 1050px;
+      margin: 0 auto;
+    }
+    .header h1 {
+      margin: 0 0 6px 0;
+      font-size: 1.6rem;
+      color: #0f172a;
+    }
+    .header p {
+      margin: 0 0 20px 0;
+      color: #64748b;
+      font-size: 0.92rem;
+    }
+    .tab-bar {
+      display: flex;
+      border-bottom: 2px solid var(--border);
+      margin-bottom: 20px;
+    }
+    .tab-btn {
+      padding: 11px 22px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: #64748b;
+      background: none;
+      border: none;
+      border-bottom: 3px solid transparent;
+      cursor: pointer;
+      transition: all 0.2s;
+      width: auto;
+    }
+    .tab-btn:hover {
+      color: var(--primary);
+    }
+    .tab-btn.active {
+      color: var(--primary);
+      border-bottom-color: var(--primary);
+      background: #eff6ff;
+      border-radius: 6px 6px 0 0;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+      margin-bottom: 20px;
+    }
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 20px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+      margin-bottom: 20px;
+    }
+    .card-title {
+      font-weight: 600;
+      font-size: 0.98rem;
+      margin-top: 0;
+      margin-bottom: 14px;
+      color: #334155;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 8px;
+    }
+    .form-group {
+      margin-bottom: 14px;
+    }
+    .form-group:last-child {
+      margin-bottom: 0;
+    }
+    label {
+      display: block;
+      font-size: 0.83rem;
+      font-weight: 600;
+      margin-bottom: 5px;
+      color: #475569;
+    }
+    input[type="file"], input[type="number"], select {
+      width: 100%;
+      padding: 9px 11px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 0.9rem;
+      box-sizing: border-box;
+      background: #f8fafc;
+      color: var(--text);
+    }
+    select[multiple] {
+      height: 90px;
+      background: #ffffff;
+    }
+    button.action-btn {
+      width: 100%;
+      background-color: var(--primary);
+      color: white;
+      border: none;
+      padding: 12px;
+      border-radius: 6px;
+      font-size: 0.98rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    button.action-btn:hover { background-color: var(--primary-hover); }
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
+      margin-bottom: 20px;
+    }
+    .stat-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px;
+      text-align: center;
+    }
+    .stat-val {
+      font-size: 1.35rem;
+      font-weight: 700;
+      color: var(--primary);
+    }
+    .stat-lbl {
+      font-size: 0.78rem;
+      color: #64748b;
+      margin-top: 4px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 6px;
+    }
+    th, td {
+      padding: 9px 11px;
+      text-align: center;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.86rem;
+    }
+    th {
+      background-color: #f1f5f9;
+      font-weight: 600;
+      color: #334155;
+    }
+    th:first-child, td:first-child {
+      text-align: left;
+    }
+    .highlight { font-weight: 700; color: var(--primary); }
+    .hidden { display: none; }
+    .file-status { font-size: 0.78rem; color: var(--success); margin-top: 4px; }
+    .method-badge {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      background: #dbeafe;
+      color: #1e40af;
+      margin-bottom: 12px;
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <div class="header">
+    <h1>Paired DMA & Synthetic Controls MDE Dashboard</h1>
+    <p>Upload your CSV files to compare 1-to-1 Paired DMA design against Synthetic Controls.</p>
+  </div>
+
+  <!-- Tab Navigation Bar -->
+  <div class="tab-bar">
+    <button class="tab-btn active" id="tab-paired-btn" onclick="switchTab('paired')">1-to-1 Paired DMA Analysis</button>
+    <button class="tab-btn" id="tab-synth-btn" onclick="switchTab('synth')">Synthetic Controls Analysis</button>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <div class="card-title">1. Upload Datasets</div>
+      <div class="form-group">
+        <label>Matched Markets CSV (Cols A & C)</label>
+        <input type="file" id="pair-file" accept=".csv">
+        <div id="pair-status" class="file-status hidden">✓ Matched pairs loaded</div>
+      </div>
+      <div class="form-group">
+        <label>Historical Sales CSV (Col C Geo ID)</label>
+        <input type="file" id="sales-file" accept=".csv">
+        <div id="sales-status" class="file-status hidden">✓ Historical sales loaded</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">2. Test Parameters & Variable Filters</div>
+      <div class="form-group">
+        <label for="window-days">Historical Window / Test Duration (Days)</label>
+        <input type="number" id="window-days" value="42" min="1" max="180">
+      </div>
+      <div class="form-group">
+        <label for="test-tails">Hypothesis Test Type</label>
+        <select id="test-tails">
+          <option value="1" selected>1-Tailed Test (Incremental Sales Lift)</option>
+          <option value="2">2-Tailed Test (Difference in Either Direction)</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="target-var-select">Filter Col G (Target Variable)</label>
+        <select id="target-var-select" multiple>
+          <option value="__ALL__" selected>-- All Target Variables --</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="cat-select">Filter Col I (Category Name)</label>
+        <select id="cat-select" multiple>
+          <option value="__ALL__" selected>-- All Categories --</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <button class="action-btn" id="calc-btn">Calculate MDE & Run Analysis</button>
+
+  <div id="results-section" class="hidden" style="margin-top: 24px;">
+    <div class="method-badge" id="active-method-badge">Active Method: 1-to-1 Paired DMA</div>
+
+    <!-- Key Stats Cards -->
+    <div class="stats-row">
+      <div class="stat-card">
+        <div class="stat-val" id="stat-pairs">0</div>
+        <div class="stat-lbl" id="stat-pairs-lbl">Matched Pairs ($N$)</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-val" id="stat-windows">0</div>
+        <div class="stat-lbl">Historical Windows ($K$)</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-val" id="stat-sd">0.00%</div>
+        <div class="stat-lbl">Baseline Volatility ($s_d$)</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-val" id="stat-corr">0.00%</div>
+        <div class="stat-lbl" id="stat-corr-lbl">Avg Pair Correlation ($\bar{\rho}$)</div>
+      </div>
+    </div>
+
+    <!-- MDE Matrix -->
+    <div class="card">
+      <div class="card-title">Minimum Detectable Effect (MDE) Power Matrix</div>
+      <table>
+        <thead>
+          <tr>
+            <th>Significance Level ($\alpha$)</th>
+            <th>80% Power</th>
+            <th>85% Power</th>
+            <th>90% Power</th>
+            <th>95% Power</th>
+          </tr>
+        </thead>
+        <tbody id="mde-table-body"></tbody>
+      </table>
+    </div>
+
+    <!-- Group Sales Summary & Diagnostics -->
+    <div class="card">
+      <div class="card-title">Historical Sales & Baseline Diagnostics</div>
+      <table>
+        <thead>
+          <tr>
+            <th>Metric Level</th>
+            <th>Control / Donor Group</th>
+            <th>Treatment Group</th>
+            <th>Variance / Delta</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Window Sales Mean (per DMA)</strong></td>
+            <td id="diag-w-mean-ctrl">-</td>
+            <td id="diag-w-mean-treat">-</td>
+            <td id="diag-w-mean-delta">-</td>
+          </tr>
+          <tr>
+            <td><strong>Window Sales SD (per DMA)</strong></td>
+            <td id="diag-w-sd-ctrl">-</td>
+            <td id="diag-w-sd-treat">-</td>
+            <td id="diag-homo-ratio">-</td>
+          </tr>
+          <tr>
+            <td><strong>Cumulative Sales (Sum)</strong></td>
+            <td id="diag-cum-sum-ctrl">-</td>
+            <td id="diag-cum-sum-treat">-</td>
+            <td id="diag-cum-delta">-</td>
+          </tr>
+          <tr>
+            <td><strong>Cumulative Orders (Total)</strong></td>
+            <td id="diag-orders-ctrl">-</td>
+            <td id="diag-orders-treat">-</td>
+            <td id="diag-orders-delta">-</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+  let pairsData = null;
+  let salesData = null;
+  let currentTab = 'paired';
+
+  function switchTab(tab) {
+    currentTab = tab;
+    document.getElementById('tab-paired-btn').classList.toggle('active', tab === 'paired');
+    document.getElementById('tab-synth-btn').classList.toggle('active', tab === 'synth');
+    
+    if (pairsData && salesData) {
+      runCalculation();
+    }
+  }
+
+  document.getElementById('pair-file').addEventListener('change', (e) => {
+    parseCSV(e.target.files[0], (data) => {
+      pairsData = data;
+      document.getElementById('pair-status').classList.remove('hidden');
+    });
+  });
+
+  document.getElementById('sales-file').addEventListener('change', (e) => {
+    parseCSV(e.target.files[0], (data) => {
+      salesData = data;
+      document.getElementById('sales-status').classList.remove('hidden');
+      populateFilterDropdowns();
+    });
+  });
+
+  function parseCSV(file, callback) {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      let text = e.target.result;
+      if (text.charCodeAt(0) === 0xFEFF) text = text.substr(1);
+      
+      const lines = text.trim().split(/\r?\n/);
+      if (lines.length < 2) return;
+
+      const parseLine = (line) => {
+        const row = [];
+        let field = '';
+        let inQuotes = false;
+        for (let i = 0; i < line.length; i++) {
+          const c = line[i];
+          if (c === '"') {
+            if (inQuotes && i + 1 < line.length && line[i + 1] === '"') {
+              field += '"';
+              i++;
+            } else inQuotes = !inQuotes;
+          } else if (c === ',' && !inQuotes) {
+            row.push(field.trim());
+            field = '';
+          } else field += c;
+        }
+        row.push(field.trim());
+        return row;
+      };
+
+      const headers = parseLine(lines[0]).map(h => h.replace(/^"|"$/g, '').trim());
+      const rows = [];
+
+      for (let i = 1; i < lines.length; i++) {
+        if (!lines[i].trim()) continue;
+        const vals = parseLine(lines[i]).map(v => v.replace(/^"|"$/g, '').trim());
+        const row = {};
+        headers.forEach((h, idx) => {
+          row[h] = vals[idx] !== undefined ? vals[idx] : '';
+        });
+        rows.push(row);
+      }
+      callback(rows);
+    };
+    reader.readAsText(file);
+  }
+
+  function populateFilterDropdowns() {
+    if (!salesData || salesData.length === 0) return;
+    const salesKeys = Object.keys(salesData[0]);
+
+    const targetVarCol = salesKeys.find(k => k.toLowerCase() === 'target_variable_nm') || salesKeys[6] || salesKeys[0];
+    const catCol = salesKeys.find(k => k.toLowerCase() === 'category_nm') || salesKeys[8] || salesKeys[0];
+
+    const targetVars = new Set();
+    const categories = new Set();
+
+    salesData.forEach(r => {
+      if (r[targetVarCol]) targetVars.add(String(r[targetVarCol]).trim());
+      if (r[catCol]) categories.add(String(r[catCol]).trim());
+    });
+
+    const tvSelect = document.getElementById('target-var-select');
+    tvSelect.innerHTML = '<option value="__ALL__" selected>-- All Target Variables --</option>';
+    Array.from(targetVars).sort().forEach(tv => {
+      tvSelect.innerHTML += `<option value="${tv}">${tv}</option>`;
+    });
+
+    const catSelect = document.getElementById('cat-select');
+    catSelect.innerHTML = '<option value="__ALL__" selected>-- All Categories --</option>';
+    Array.from(categories).sort().forEach(cat => {
+      catSelect.innerHTML += `<option value="${cat}">${cat}</option>`;
+    });
+  }
+
+  function parseDateToEpochDays(dateStr) {
+    if (!dateStr) return null;
+    const s = dateStr.trim();
+    let y, m, d;
+
+    if (s.includes('-')) {
+      const parts = s.split('-');
+      y = parseInt(parts[0], 10);
+      m = parseInt(parts[1], 10) - 1;
+      d = parseInt(parts[2], 10);
+    } else if (s.includes('/')) {
+      const parts = s.split('/');
+      m = parseInt(parts[0], 10) - 1;
+      d = parseInt(parts[1], 10);
+      y = parseInt(parts[2], 10);
+    } else return null;
+
+    if (isNaN(y) || isNaN(m) || isNaN(d)) return null;
+    return Math.floor(Date.UTC(y, m, d) / (1000 * 60 * 60 * 24));
+  }
+
+  function fmtCurr(val) {
+    return '$' + val.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  document.getElementById('calc-btn').addEventListener('click', () => {
+    runCalculation();
+  });
+
+  function runCalculation() {
+    if (!pairsData || !salesData) {
+      alert('Please upload both CSV files before calculating.');
+      return;
+    }
+
+    const windowDays = parseInt(document.getElementById('window-days').value);
+    const tails = parseInt(document.getElementById('test-tails').value);
+
+    if (isNaN(windowDays) || windowDays < 1) {
+      alert('Please enter a valid number of days for the historical window.');
+      return;
+    }
+
+    const pairKeys = Object.keys(pairsData[0]);
+    let ctrlCol = pairKeys.find(k => k.toLowerCase() === 'control dma id' || k.toLowerCase() === 'control_dma_id') || pairKeys[0];
+    let treatCol = pairKeys.find(k => k.toLowerCase() === 'treatment dma id' || k.toLowerCase() === 'treatment_dma_id') || pairKeys[2];
+
+    const salesKeys = Object.keys(salesData[0]);
+    let dayCol = salesKeys.find(k => k.toLowerCase() === 'day' || k.toLowerCase() === 'date') || salesKeys[0];
+    let geoCol = salesKeys.find(k => k.toLowerCase() === 'geo_id' || k.toLowerCase() === 'dma_id') || salesKeys[2];
+    let targetVarCol = salesKeys.find(k => k.toLowerCase() === 'target_variable_nm') || salesKeys[6] || salesKeys[0];
+    let catCol = salesKeys.find(k => k.toLowerCase() === 'category_nm') || salesKeys[8] || salesKeys[0];
+    let salesValCol = salesKeys.find(k => k.toLowerCase() === 'sales') || salesKeys.find(k => k.toLowerCase() === 'actual_sales') || salesKeys[salesKeys.length - 1];
+    let ordersValCol = salesKeys.find(k => k.toLowerCase() === 'orders') || salesKeys[11];
+
+    const selectedTvOpts = Array.from(document.getElementById('target-var-select').selectedOptions).map(o => o.value);
+    const selectedCatOpts = Array.from(document.getElementById('cat-select').selectedOptions).map(o => o.value);
+
+    const filterAllTv = selectedTvOpts.length === 0 || selectedTvOpts.includes('__ALL__');
+    const filterAllCat = selectedCatOpts.length === 0 || selectedCatOpts.includes('__ALL__');
+
+    const pairs = pairsData.map(r => ({
+      ctrlId: String(r[ctrlCol]).trim(),
+      treatId: String(r[treatCol]).trim()
+    })).filter(p => p.ctrlId && p.treatId);
+
+    const ctrlSet = new Set(pairs.map(p => p.ctrlId));
+    const treatSet = new Set(pairs.map(p => p.treatId));
+    const targetGeos = new Set([...ctrlSet, ...treatSet]);
+
+    const dailySales = {};
+    const ctrlCumSales = {}, treatCumSales = {};
+    const ctrlCumOrders = {}, treatCumOrders = {};
+
+    let minEpoch = Infinity;
+    let maxEpoch = -Infinity;
+
+    salesData.forEach(r => {
+      const dateStr = r[dayCol];
+      const geo = String(r[geoCol]).trim();
+      const tvVal = String(r[targetVarCol] || '').trim();
+      const catVal = String(r[catCol] || '').trim();
+      const salesVal = parseFloat(r[salesValCol]) || 0;
+      const ordersVal = parseFloat(r[ordersValCol]) || 0;
+
+      if (!dateStr || !geo || !targetGeos.has(geo)) return;
+      if (!filterAllTv && !selectedTvOpts.includes(tvVal)) return;
+      if (!filterAllCat && !selectedCatOpts.includes(catVal)) return;
+
+      const epochDays = parseDateToEpochDays(dateStr);
+      if (epochDays === null) return;
+
+      if (epochDays < minEpoch) minEpoch = epochDays;
+      if (epochDays > maxEpoch) maxEpoch = epochDays;
+
+      if (!dailySales[epochDays]) dailySales[epochDays] = {};
+      dailySales[epochDays][geo] = (dailySales[epochDays][geo] || 0) + salesVal;
+
+      if (ctrlSet.has(geo)) {
+        ctrlCumSales[geo] = (ctrlCumSales[geo] || 0) + salesVal;
+        ctrlCumOrders[geo] = (ctrlCumOrders[geo] || 0) + ordersVal;
+      } else if (treatSet.has(geo)) {
+        treatCumSales[geo] = (treatCumSales[geo] || 0) + salesVal;
+        treatCumOrders[geo] = (treatCumOrders[geo] || 0) + ordersVal;
+      }
+    });
+
+    if (minEpoch === Infinity || maxEpoch === -Infinity) {
+      alert('No matching records found for the selected filters.');
+      return;
+    }
+
+    const totalDays = maxEpoch - minEpoch + 1;
+    const numWindows = Math.floor(totalDays / windowDays);
+
+    if (numWindows < 1) {
+      alert(`The date range (${totalDays} days) is shorter than the selected ${windowDays}-day window.`);
+      return;
+    }
+
+    const windowSales = {};
+    const windowDayCounts = {};
+
+    Object.keys(dailySales).forEach(epStr => {
+      const epDays = parseInt(epStr, 10);
+      const dayIdx = epDays - minEpoch;
+      const wIdx = Math.floor(dayIdx / windowDays);
+
+      if (wIdx < numWindows) {
+        if (!windowSales[wIdx]) windowSales[wIdx] = {};
+        if (!windowDayCounts[wIdx]) windowDayCounts[wIdx] = new Set();
+
+        windowDayCounts[wIdx].add(epDays);
+        Object.keys(dailySales[epStr]).forEach(geo => {
+          windowSales[wIdx][geo] = (windowSales[wIdx][geo] || 0) + dailySales[epStr][geo];
+        });
+      }
+    });
+
+    const validWindows = [];
+    for (let w = 0; w < numWindows; w++) {
+      if (windowDayCounts[w] && windowDayCounts[w].size === windowDays) {
+        validWindows.push(w);
+      }
+    }
+
+    const K = validWindows.length;
+    const N = pairs.length;
+    const df = N - 1;
+
+    let allDiffs = [];
+    let avgCorr = 0;
+
+    const ctrlWindowVals = [];
+    const treatWindowVals = [];
+
+    if (currentTab === 'paired') {
+      document.getElementById('active-method-badge').innerText = 'Active Method: 1-to-1 Paired DMA Analysis';
+      document.getElementById('stat-pairs-lbl').innerText = 'Matched Pairs (N)';
+      document.getElementById('stat-corr-lbl').innerText = 'Avg Pair Correlation (ρ)';
+
+      const pairCorrs = [];
+      pairs.forEach(p => {
+        const ctrlVals = validWindows.map(w => (windowSales[w] && windowSales[w][p.ctrlId]) || 0);
+        const treatVals = validWindows.map(w => (windowSales[w] && windowSales[w][p.treatId]) || 0);
+
+        ctrlVals.forEach(v => ctrlWindowVals.push(v));
+        treatVals.forEach(v => treatWindowVals.push(v));
+
+        const ctrlMean = mean(ctrlVals);
+        const treatMean = mean(treatVals);
+
+        if (ctrlMean > 0 && treatMean > 0) {
+          for (let k = 0; k < K; k++) {
+            allDiffs.push((treatVals[k] / treatMean) - (ctrlVals[k] / ctrlMean));
+          }
+          pairCorrs.push(calculatePearson(ctrlVals, treatVals));
+        }
+      });
+      avgCorr = mean(pairCorrs);
+    } else {
+      document.getElementById('active-method-badge').innerText = 'Active Method: Synthetic Controls Analysis (Donor Pool Weighting)';
+      document.getElementById('stat-pairs-lbl').innerText = 'Treatment Markets (N)';
+      document.getElementById('stat-corr-lbl').innerText = 'Variance Explained (R²)';
+
+      const ctrlArray = Array.from(ctrlSet);
+      const X_ctrl = [];
+
+      for (let k = 0; k < K; k++) {
+        const wIdx = validWindows[k];
+        const row = ctrlArray.map(cId => (windowSales[wIdx] && windowSales[wIdx][cId]) || 0);
+        X_ctrl.push(row);
+      }
+
+      // Normalize donor columns by mean
+      const X_ctrl_idx = X_ctrl.map(row => [...row]);
+      const M = ctrlArray.length;
+      const ctrlMeans = new Float64Array(M);
+
+      for (let j = 0; j < M; j++) {
+        let sum = 0;
+        for (let k = 0; k < K; k++) sum += X_ctrl[k][j];
+        ctrlMeans[j] = sum / K;
+        for (let k = 0; k < K; k++) {
+          X_ctrl_idx[k][j] = ctrlMeans[j] > 0 ? X_ctrl[k][j] / ctrlMeans[j] : 0;
+        }
+      }
+
+      const treatArray = Array.from(treatSet);
+      let totalR2 = 0;
+
+      treatArray.forEach(tId => {
+        const treatVals = validWindows.map(w => (windowSales[w] && windowSales[w][tId]) || 0);
+        treatVals.forEach(v => treatWindowVals.push(v));
+
+        const treatMean = mean(treatVals);
+        if (treatMean > 0) {
+          const y_idx = treatVals.map(v => v / treatMean);
+          const w_opt = solveNNRidge(X_ctrl_idx, y_idx, 0.5, 200);
+
+          for (let k = 0; k < K; k++) {
+            let synth_y = 0;
+            for (let j = 0; j < M; j++) synth_y += X_ctrl_idx[k][j] * w_opt[j];
+            allDiffs.push(y_idx[k] - synth_y);
+          }
+
+          const r2 = calculatePearson(y_idx, X_ctrl_idx.map(row => row.reduce((a, b, idx) => a + b * w_opt[idx], 0)));
+          totalR2 += Math.max(0, r2 * r2);
+        }
+      });
+
+      ctrlArray.forEach(cId => {
+        validWindows.forEach(w => ctrlWindowVals.push((windowSales[w] && windowSales[w][cId]) || 0));
+      });
+
+      avgCorr = totalR2 / treatArray.length;
+    }
+
+    const meanDiff = mean(allDiffs);
+    const variance = allDiffs.reduce((a,b)=>a+Math.pow(b-meanDiff,2),0) / (allDiffs.length - 1);
+    const sdRelative = Math.sqrt(variance) * 100;
+
+    // Stat Cards Update
+    document.getElementById('stat-pairs').innerText = N;
+    document.getElementById('stat-windows').innerText = K;
+    document.getElementById('stat-sd').innerText = `±${sdRelative.toFixed(2)}%`;
+    document.getElementById('stat-corr').innerText = `${(avgCorr * 100).toFixed(2)}%`;
+
+    // MDE Matrix Update
+    const alphas = [0.05, 0.10, 0.15];
+    const powers = [0.80, 0.85, 0.90, 0.95];
+    const mdeTbody = document.getElementById('mde-table-body');
+    mdeTbody.innerHTML = '';
+
+    alphas.forEach(alpha => {
+      const effectiveAlpha = tails === 1 ? alpha : alpha / 2;
+      const tCrit = normSInv(1 - effectiveAlpha);
+      const prefix = tails === 1 ? '+' : '±';
+
+      let rowHtml = `<tr><td><strong>p = ${alpha.toFixed(2)}</strong> (${tails}-tailed, $tc=${tCrit.toFixed(3)}$)</td>`;
+      powers.forEach(pwr => {
+        const ncp = calculateNCP(tCrit, pwr);
+        const mde = (ncp / Math.sqrt(N)) * sdRelative;
+        rowHtml += `<td class="highlight">${prefix}${mde.toFixed(2)}%</td>`;
+      });
+      rowHtml += `</tr>`;
+      mdeTbody.innerHTML += rowHtml;
+    });
+
+    // Diagnostic Summary Update
+    const cWMean = mean(ctrlWindowVals);
+    const cWSd = stdDev(ctrlWindowVals);
+    const tWMean = mean(treatWindowVals);
+    const tWSd = stdDev(treatWindowVals);
+
+    const cCumSum = Object.values(ctrlCumSales).reduce((a,b)=>a+b,0);
+    const tCumSum = Object.values(treatCumSales).reduce((a,b)=>a+b,0);
+    const cumDelta = ((tCumSum - cCumSum) / cCumSum) * 100;
+
+    const cOrdSum = Object.values(ctrlCumOrders).reduce((a,b)=>a+b,0);
+    const tOrdSum = Object.values(treatCumOrders).reduce((a,b)=>a+b,0);
+    const ordDelta = ((tOrdSum - cOrdSum) / cOrdSum) * 100;
+
+    document.getElementById('diag-w-mean-ctrl').innerText = fmtCurr(cWMean);
+    document.getElementById('diag-w-mean-treat').innerText = fmtCurr(tWMean);
+    document.getElementById('diag-w-mean-delta').innerText = `${(((tWMean - cWMean) / cWMean) * 100).toFixed(2)}%`;
+
+    document.getElementById('diag-w-sd-ctrl').innerText = fmtCurr(cWSd);
+    document.getElementById('diag-w-sd-treat').innerText = fmtCurr(tWSd);
+    document.getElementById('diag-homo-ratio').innerText = `Ratio: ${(cWSd / tWSd).toFixed(3)}`;
+
+    document.getElementById('diag-cum-sum-ctrl').innerText = fmtCurr(cCumSum);
+    document.getElementById('diag-cum-sum-treat').innerText = fmtCurr(tCumSum);
+    document.getElementById('diag-cum-delta').innerText = `${cumDelta.toFixed(2)}%`;
+
+    document.getElementById('diag-orders-ctrl').innerText = cOrdSum.toLocaleString('en-US');
+    document.getElementById('diag-orders-treat').innerText = tOrdSum.toLocaleString('en-US');
+    document.getElementById('diag-orders-delta').innerText = `${ordDelta.toFixed(2)}%`;
+
+    document.getElementById('results-section').classList.remove('hidden');
+  }
+
+  // Non-Negative Coordinate Descent Ridge Solver for Synthetic Controls
+  function solveNNRidge(X, y, l2Reg = 0.5, maxIter = 200) {
+    const K = X.length;
+    const M = X[0].length;
+    const w = new Float64Array(M);
+    const xSq = new Float64Array(M);
+
+    for (let j = 0; j < M; j++) {
+      let sumSq = 0;
+      for (let i = 0; i < K; i++) sumSq += X[i][j] * X[i][j];
+      xSq[j] = sumSq + l2Reg;
+    }
+
+    const r = new Float64Array(y);
+
+    for (let iter = 0; iter < maxIter; iter++) {
+      for (let j = 0; j < M; j++) {
+        let rDotX = 0;
+        for (let i = 0; i < K; i++) rDotX += X[i][j] * r[i];
+        
+        const rho = rDotX + w[j] * (xSq[j] - l2Reg);
+        const wNew = Math.max(0, rho / xSq[j]);
+        const wDiff = wNew - w[j];
+        if (wDiff !== 0) {
+          for (let i = 0; i < K; i++) r[i] -= X[i][j] * wDiff;
+          w[j] = wNew;
+        }
+      }
+    }
+    return w;
+  }
+
+  function mean(arr) {
+    return arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
+  }
+
+  function stdDev(arr) {
+    if (arr.length < 2) return 0;
+    const m = mean(arr);
+    return Math.sqrt(arr.reduce((a, b) => a + Math.pow(b - m, 2), 0) / (arr.length - 1));
+  }
+
+  function calculatePearson(x, y) {
+    const mx = mean(x), my = mean(y);
+    let num = 0, denX = 0, denY = 0;
+    for (let i = 0; i < x.length; i++) {
+      const dx = x[i] - mx, dy = y[i] - my;
+      num += dx * dy;
+      denX += dx * dx;
+      denY += dy * dy;
+    }
+    return denX && denY ? num / Math.sqrt(denX * denY) : 0;
+  }
+
+  function calculateNCP(tCrit, targetPower) {
+    let ncpLow = 0, ncpHigh = 20, ncp = 0;
+    for (let i = 0; i < 40; i++) {
+      ncp = (ncpLow + ncpHigh) / 2;
+      const powerApprox = 1 - normcdf(tCrit - ncp);
+      if (powerApprox < targetPower) ncpLow = ncp;
+      else ncpHigh = ncp;
+    }
+    return ncp;
+  }
+
+  function normSInv(p) {
+    if (p <= 0 || p >= 1) return 0;
+    const c = [2.515517, 0.802853, 0.010328];
+    const d = [1.432788, 0.189269, 0.001308];
+    const approx = (t) => t - ((c[2]*t + c[1])*t + c[0]) / (((d[2]*t + d[1])*t + d[0])*t + 1.0);
+    return p < 0.5 ? -approx(Math.sqrt(-2.0 * Math.log(p))) : approx(Math.sqrt(-2.0 * Math.log(1 - p)));
+  }
+
+  function normcdf(x) {
+    return (1.0 + erf(x / Math.sqrt(2.0))) / 2.0;
+  }
+
+  function erf(x) {
+    const a1 = 0.254829592, a2 = -0.284496736, a3 = 1.421413741, a4 = -1.453152027, a5 = 1.061405429, p = 0.3275911;
+    const sign = x < 0 ? -1 : 1;
+    x = Math.abs(x);
+    const t = 1.0 / (1.0 + p * x);
+    return sign * (1.0 - (((((a5 * t + a4) * t) + a3) * t + a2) * t + a1) * t * Math.exp(-x * x));
+  }
+</script>
+</body>
+</html>

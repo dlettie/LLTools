@@ -1,0 +1,1408 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Marketing Calendar & Analytics Studio</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js & Date Adapter -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+    <!-- Data Parsers: PapaParse (CSV) & SheetJS (Excel) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        charcoal: {
+                            DEFAULT: '#121417',
+                            card: '#1A1D21',
+                            border: '#2A2F35',
+                            hover: '#22262C'
+                        },
+                        accent: {
+                            green: '#10B981',
+                            greenHover: '#059669',
+                            emerald: '#00E676'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            background-color: #121417;
+            color: #E5E7EB;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+        }
+        /* Custom Scrollbars */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #121417; }
+        ::-webkit-scrollbar-thumb { background: #2A2F35; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #10B981; }
+
+        /* Custom Range Slider Styles */
+        input[type=range] {
+            -webkit-appearance: none;
+            background: #2A2F35;
+            height: 6px;
+            border-radius: 3px;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 16px;
+            width: 16px;
+            border-radius: 50%;
+            background: #10B981;
+            cursor: pointer;
+            box-shadow: 0 0 5px rgba(16, 185, 129, 0.5);
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+    <!-- Snapshot Banner (if viewing embedded data) -->
+    <div id="snapshotBanner" class="hidden bg-accent-green/20 border-b border-accent-green/40 px-6 py-2 flex justify-between items-center text-xs text-accent-green">
+        <div class="flex items-center space-x-2 font-semibold">
+            <span>📷 SNAPSHOT MODE: Viewing pre-loaded dataset package.</span>
+        </div>
+        <span id="snapshotTime" class="text-gray-400 font-mono"></span>
+    </div>
+
+    <!-- Header -->
+    <header class="border-b border-charcoal-border bg-charcoal-card py-4 px-6 flex flex-wrap justify-between items-center sticky top-0 z-40 shadow-lg gap-3">
+        <div class="flex items-center space-x-3">
+            <div class="h-8 w-2 bg-accent-green rounded-full"></div>
+            <h1 class="text-xl font-bold text-white tracking-wide">MARKETING CALENDAR <span class="text-accent-green font-light">& Analytics Studio</span></h1>
+        </div>
+        <div class="flex flex-wrap items-center gap-2">
+            <button id="loadSampleBtn" class="px-3 py-1.5 text-xs font-semibold bg-charcoal-border hover:bg-charcoal-hover text-gray-200 border border-gray-600 rounded transition">
+                Load Sample Data
+            </button>
+            <button id="hideSampleBtn" class="px-3 py-1.5 text-xs font-semibold bg-red-950/40 hover:bg-red-900/60 text-red-300 border border-red-800/50 rounded transition">
+                Hide Sample Data
+            </button>
+            <button id="clearDataBtn" class="px-3 py-1.5 text-xs font-semibold bg-gray-800 hover:bg-gray-700 text-gray-300 border border-gray-600 rounded transition">
+                Clear All Data
+            </button>
+            <button id="exportSnapshotBtn" class="px-3.5 py-1.5 text-xs font-bold bg-accent-emerald/20 hover:bg-accent-emerald/30 text-accent-emerald border border-accent-emerald/50 rounded transition flex items-center gap-1.5">
+                <span>💾</span> Export Snapshot HTML
+            </button>
+            <button id="openMappingModalBtn" class="px-4 py-1.5 text-xs font-bold bg-accent-green hover:bg-accent-greenHover text-black rounded shadow transition">
+                + Import & Map Datasets
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Workspace -->
+    <main class="flex-1 p-6 space-y-6 max-w-[1700px] mx-auto w-full">
+
+        <!-- Top Controls & Multi-Select Filters Bar -->
+        <section class="bg-charcoal-card border border-charcoal-border rounded-xl p-5 shadow-sm space-y-4">
+            <div class="flex flex-wrap items-center justify-between gap-4 border-b border-charcoal-border pb-4">
+                <div class="flex items-center space-x-3">
+                    <label class="text-xs uppercase tracking-wider text-gray-400 font-semibold">Group By (Timeline Rows):</label>
+                    <select id="groupBySelect" class="bg-charcoal border border-charcoal-border text-xs text-white rounded px-3 py-1.5 focus:outline-none focus:border-accent-green">
+                        <option value="promotion_group" selected>Promotion Group</option>
+                        <option value="promotion_type">Promotion Type</option>
+                        <option value="product_category">Product Category</option>
+                        <option value="seasonal_flag">Seasonal Flag</option>
+                        <option value="event_name">Event Name</option>
+                    </select>
+                </div>
+
+                <div class="flex items-center space-x-3">
+                    <button id="resetFiltersBtn" class="text-xs text-gray-400 hover:text-accent-green underline transition">Reset All Filters</button>
+                </div>
+            </div>
+
+            <!-- Multi-Select Dynamic Filters Grid -->
+            <div id="filterControlsContainer" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 pt-1">
+                <!-- Multi-select components injected dynamically -->
+            </div>
+        </section>
+
+        <!-- Date Range Slider Controller -->
+        <section class="bg-charcoal-card border border-charcoal-border rounded-xl p-5 shadow-sm space-y-4">
+            <div class="flex flex-wrap items-center justify-between gap-4 border-b border-charcoal-border pb-3">
+                <div class="flex items-center space-x-2">
+                    <span class="w-2 h-2 rounded-full bg-accent-green"></span>
+                    <h2 class="text-xs uppercase font-bold text-white tracking-wider">Date Timeline Window Selector</h2>
+                </div>
+                <div class="flex flex-wrap items-center gap-2 text-xs">
+                    <button class="preset-btn px-2.5 py-1 bg-charcoal hover:bg-charcoal-hover border border-charcoal-border rounded text-gray-300" data-range="all">Full Range</button>
+                    <button class="preset-btn px-2.5 py-1 bg-charcoal hover:bg-charcoal-hover border border-charcoal-border rounded text-gray-300" data-range="30">Last 30 Days</button>
+                    <button class="preset-btn px-2.5 py-1 bg-charcoal hover:bg-charcoal-hover border border-charcoal-border rounded text-gray-300" data-range="60">Last 60 Days</button>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
+                <!-- Direct Date Inputs -->
+                <div class="flex items-center space-x-4">
+                    <div class="flex-1">
+                        <label class="text-[10px] uppercase font-semibold text-gray-400 block mb-1">Start Date</label>
+                        <input type="date" id="startDateInput" class="w-full bg-charcoal border border-charcoal-border text-xs text-white rounded p-2 focus:outline-none focus:border-accent-green">
+                    </div>
+                    <span class="text-gray-500 font-bold pt-4">to</span>
+                    <div class="flex-1">
+                        <label class="text-[10px] uppercase font-semibold text-gray-400 block mb-1">End Date</label>
+                        <input type="date" id="endDateInput" class="w-full bg-charcoal border border-charcoal-border text-xs text-white rounded p-2 focus:outline-none focus:border-accent-green">
+                    </div>
+                </div>
+
+                <!-- Range Slider Controls -->
+                <div class="space-y-3">
+                    <div>
+                        <div class="flex justify-between text-[10px] text-gray-400 mb-1">
+                            <span>Start Window</span>
+                            <span id="sliderStartVal" class="text-accent-green font-mono">0%</span>
+                        </div>
+                        <input type="range" id="startSlider" min="0" max="100" value="0" class="w-full">
+                    </div>
+                    <div>
+                        <div class="flex justify-between text-[10px] text-gray-400 mb-1">
+                            <span>End Window</span>
+                            <span id="sliderEndVal" class="text-accent-green font-mono">100%</span>
+                        </div>
+                        <input type="range" id="endSlider" min="0" max="100" value="100" class="w-full">
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Summary Stats Section (Max 5 Visible Rows with Vertical Scrollbar) -->
+        <section class="bg-charcoal-card border border-charcoal-border rounded-xl p-5 shadow-sm">
+            <div class="flex items-center justify-between mb-3">
+                <h2 class="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                    <span class="w-2 h-2 rounded-full bg-accent-green"></span> Summary Statistics: Client-Provided Promo Groups
+                    <span class="text-[10px] text-gray-400 font-normal lowercase">(Max 5 visible rows • Scroll for more)</span>
+                </h2>
+                <span class="text-xs text-gray-400">Streak = Continuous active date blocks</span>
+            </div>
+            
+            <!-- Capped 5-row height scrollable container -->
+            <div class="max-h-[245px] overflow-y-auto border border-charcoal-border/60 rounded-lg">
+                <table class="w-full text-left text-sm text-gray-300 relative">
+                    <thead class="bg-charcoal text-xs uppercase text-gray-400 border-b border-charcoal-border sticky top-0 z-10">
+                        <tr>
+                            <th class="py-2.5 px-4 bg-charcoal">Promotion Group</th>
+                            <th class="py-2.5 px-4 text-center bg-charcoal">Number of Days "On" (Binary)</th>
+                            <th class="py-2.5 px-4 text-center bg-charcoal">Total # of Events</th>
+                            <th class="py-2.5 px-4 text-center bg-charcoal">Avg Days When "On" (Streak Length)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="summaryStatsTableBody" class="divide-y divide-charcoal-border">
+                        <tr><td colspan="4" class="text-center py-4 text-gray-500 italic">No marketing data loaded.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Synchronized Time Series Charts -->
+        <section class="space-y-6">
+            <!-- Non-Overlapping Full-Width Timeline Swimlanes with Vertical Scrollbar -->
+            <div class="bg-charcoal-card border border-charcoal-border rounded-xl p-5 shadow-sm relative">
+                <div class="flex flex-wrap justify-between items-center mb-3 gap-2">
+                    <h2 class="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                        <span>Marketing Calendar Timeline</span>
+                        <span class="text-[10px] text-gray-400 font-normal lowercase">(Max 10 visible rows • Scroll for more)</span>
+                    </h2>
+                    <span id="syncDateHover" class="text-xs font-mono font-bold bg-charcoal px-3 py-1 rounded border border-charcoal-border text-accent-green">Hover Date: --</span>
+                </div>
+                
+                <!-- Doubled Height Scrollable Outer Wrapper (Max 10 Visible Rows) -->
+                <div class="relative w-full overflow-y-auto h-[550px] border border-charcoal-border/60 rounded-lg p-1 bg-charcoal/40">
+                    <div id="mktChartContainer" class="w-full relative min-h-[540px]">
+                        <canvas id="marketingChart" class="w-full h-full"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sales & Media Overlay Visualizer (Dual Axis, Max 2 Metrics) -->
+            <div class="bg-charcoal-card border border-charcoal-border rounded-xl p-5 shadow-sm relative">
+                <div class="flex flex-wrap justify-between items-center mb-4 gap-4 border-b border-charcoal-border pb-3">
+                    <h2 class="text-sm font-bold text-white uppercase tracking-wider">Sales & Media Outcomes (Dual Axis Overlay)</h2>
+                    
+                    <div class="flex flex-wrap items-center gap-4 text-xs">
+                        <div class="flex items-center space-x-2">
+                            <label class="text-gray-400 font-semibold">Left Y-Axis Metric:</label>
+                            <select id="salesMetric1Select" class="bg-charcoal border border-charcoal-border text-white rounded px-2.5 py-1 focus:outline-none focus:border-accent-green"></select>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <label class="text-gray-400 font-semibold">Right Y-Axis Metric:</label>
+                            <select id="salesMetric2Select" class="bg-charcoal border border-charcoal-border text-white rounded px-2.5 py-1 focus:outline-none focus:border-accent-green"></select>
+                        </div>
+                    </div>
+                </div>
+                <div class="relative h-64 w-full">
+                    <canvas id="salesChart" class="w-full h-full"></canvas>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Data Import & Mapping Modal -->
+    <div id="mappingModal" class="fixed inset-0 bg-black/80 backdrop-blur-sm hidden flex items-center justify-center z-50 p-4">
+        <div class="bg-charcoal-card border border-charcoal-border rounded-xl max-w-4xl w-full max-h-[90vh] flex flex-col shadow-2xl">
+            <div class="p-5 border-b border-charcoal-border flex justify-between items-center">
+                <h2 class="text-lg font-bold text-white">Import & Map Datasets</h2>
+                <button id="closeMappingModalBtn" class="text-gray-400 hover:text-white text-xl font-bold">&times;</button>
+            </div>
+
+            <div class="p-6 space-y-8 overflow-y-auto flex-1">
+                <!-- 1. Marketing Calendar Section -->
+                <div class="space-y-4">
+                    <h3 class="text-md font-semibold text-accent-green border-b border-charcoal-border pb-2">1. Marketing Calendar Dataset</h3>
+                    <input type="file" id="mktFileInput" accept=".csv, .xlsx, .xls" class="block w-full text-xs text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-charcoal-border file:text-white hover:file:bg-charcoal-hover cursor-pointer" />
+
+                    <div id="mktMappingContainer" class="grid grid-cols-2 sm:grid-cols-3 gap-3 hidden">
+                        <div><label class="text-xs text-gray-400">Event Name*</label><select id="map_event_name" class="mkt-map-select w-full bg-charcoal text-xs text-white p-2 rounded border border-charcoal-border"></select></div>
+                        <div><label class="text-xs text-gray-400">Start Date*</label><select id="map_event_start_date" class="mkt-map-select w-full bg-charcoal text-xs text-white p-2 rounded border border-charcoal-border"></select></div>
+                        <div><label class="text-xs text-gray-400">End Date*</label><select id="map_event_end_date" class="mkt-map-select w-full bg-charcoal text-xs text-white p-2 rounded border border-charcoal-border"></select></div>
+                        <div><label class="text-xs text-gray-400">Promotion Group*</label><select id="map_promotion_group" class="mkt-map-select w-full bg-charcoal text-xs text-white p-2 rounded border border-charcoal-border"></select></div>
+                        <div><label class="text-xs text-gray-400">Promotion Type*</label><select id="map_promotion_type" class="mkt-map-select w-full bg-charcoal text-xs text-white p-2 rounded border border-charcoal-border"></select></div>
+                        <div><label class="text-xs text-gray-400">Seasonal Flag</label><select id="map_seasonal_flag" class="mkt-map-select w-full bg-charcoal text-xs text-white p-2 rounded border border-charcoal-border"></select></div>
+                        <div><label class="text-xs text-gray-400">Product Category</label><select id="map_product_category" class="mkt-map-select w-full bg-charcoal text-xs text-white p-2 rounded border border-charcoal-border"></select></div>
+                        <div><label class="text-xs text-gray-400">Promotion Value</label><select id="map_promotion_value" class="mkt-map-select w-full bg-charcoal text-xs text-white p-2 rounded border border-charcoal-border"></select></div>
+                    </div>
+
+                    <!-- Extra Dimension Mapping -->
+                    <div id="mktExtraDimContainer" class="hidden space-y-2 pt-2">
+                        <label class="text-xs text-gray-300 font-semibold">Select Additional Dimensions for Filtering:</label>
+                        <div id="mktExtraCheckboxes" class="grid grid-cols-3 gap-2 text-xs text-gray-400 bg-charcoal p-3 rounded border border-charcoal-border"></div>
+                    </div>
+                </div>
+
+                <!-- 2. Sales / Media Dataset Section -->
+                <div class="space-y-4">
+                    <h3 class="text-md font-semibold text-accent-green border-b border-charcoal-border pb-2">2. Sales & Media Overlay Dataset</h3>
+                    <input type="file" id="salesFileInput" accept=".csv, .xlsx, .xls" class="block w-full text-xs text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-charcoal-border file:text-white hover:file:bg-charcoal-hover cursor-pointer" />
+
+                    <div id="salesMappingContainer" class="space-y-3 hidden">
+                        <div class="grid grid-cols-2 gap-3">
+                            <div><label class="text-xs text-gray-400">Date Column*</label><select id="map_sales_date" class="sales-map-select w-full bg-charcoal text-xs text-white p-2 rounded border border-charcoal-border"></select></div>
+                            <div><label class="text-xs text-gray-400">Format Structure*</label>
+                                <select id="salesFormatType" class="w-full bg-charcoal text-xs text-white p-2 rounded border border-charcoal-border">
+                                    <option value="wide">Wide (e.g. Orders, Revenue, Spend in separate columns)</option>
+                                    <option value="long">Long (Dimension column + Metric value column)</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Wide Mapping -->
+                        <div id="salesWideMapping" class="space-y-2">
+                            <label class="text-xs text-gray-300 font-semibold">Select Numeric Columns to Overlay:</label>
+                            <div id="salesWideCheckboxes" class="grid grid-cols-3 gap-2 text-xs text-gray-400 bg-charcoal p-3 rounded border border-charcoal-border"></div>
+                        </div>
+
+                        <!-- Long Mapping -->
+                        <div id="salesLongMapping" class="grid grid-cols-2 gap-3 hidden">
+                            <div><label class="text-xs text-gray-400">Outcome/Dimension Column</label><select id="map_sales_dim" class="sales-map-select w-full bg-charcoal text-xs text-white p-2 rounded border border-charcoal-border"></select></div>
+                            <div><label class="text-xs text-gray-400">Metric Value Column</label><select id="map_sales_val" class="sales-map-select w-full bg-charcoal text-xs text-white p-2 rounded border border-charcoal-border"></select></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="p-5 border-t border-charcoal-border flex justify-end space-x-3">
+                <button id="applyDataMappingBtn" class="px-6 py-2 bg-accent-green hover:bg-accent-greenHover text-black text-xs font-bold rounded shadow transition">Apply & Process Datasets</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Application Script -->
+    <script>
+        // --- Application State ---
+        let rawMktData = [];
+        let rawSalesData = [];
+        let processedDailyMkt = [];
+        let processedSalesDaily = [];
+
+        let currentMktMapping = {};
+        let activeFilters = {};
+        let extraDimensions = [];
+
+        // Global Date Bounds & Window Range
+        let globalMinDateStr = '';
+        let globalMaxDateStr = '';
+        let windowStartStr = '';
+        let windowEndStr = '';
+
+        let marketingChartInstance = null;
+        let salesChartInstance = null;
+
+        // Visual Palette (Distinct Timeline Colors)
+        const COLOR_PALETTE = [
+            '#10B981', '#00E676', '#34D399', '#A7F3D0', '#6EE7B7',
+            '#3B82F6', '#60A5FA', '#93C5FD', '#F59E0B', '#FBBF24',
+            '#EC4899', '#F472B6', '#8B5CF6', '#C084FC', '#06B6D4'
+        ];
+
+        // --- Core App Initialization ---
+        document.addEventListener('DOMContentLoaded', () => {
+            initEventListeners();
+            
+            if (window.EMBEDDED_SNAPSHOT_DATA) {
+                loadSnapshotData(window.EMBEDDED_SNAPSHOT_DATA);
+            } else {
+                loadSampleData();
+            }
+        });
+
+        function initEventListeners() {
+            document.getElementById('openMappingModalBtn').addEventListener('click', () => toggleModal(true));
+            document.getElementById('closeMappingModalBtn').addEventListener('click', () => toggleModal(false));
+            document.getElementById('loadSampleBtn').addEventListener('click', loadSampleData);
+            document.getElementById('hideSampleBtn').addEventListener('click', clearAllData);
+            document.getElementById('clearDataBtn').addEventListener('click', clearAllData);
+            document.getElementById('exportSnapshotBtn').addEventListener('click', exportSnapshotHTML);
+            document.getElementById('applyDataMappingBtn').addEventListener('click', applyDataMapping);
+
+            document.getElementById('mktFileInput').addEventListener('change', (e) => handleFileUpload(e, 'mkt'));
+            document.getElementById('salesFileInput').addEventListener('change', (e) => handleFileUpload(e, 'sales'));
+
+            document.getElementById('salesFormatType').addEventListener('change', (e) => {
+                const isWide = e.target.value === 'wide';
+                document.getElementById('salesWideMapping').classList.toggle('hidden', !isWide);
+                document.getElementById('salesLongMapping').classList.toggle('hidden', isWide);
+            });
+
+            document.getElementById('groupBySelect').addEventListener('change', updateDashboard);
+            document.getElementById('salesMetric1Select').addEventListener('change', () => renderSalesChart(processedSalesDaily));
+            document.getElementById('salesMetric2Select').addEventListener('change', () => renderSalesChart(processedSalesDaily));
+            document.getElementById('resetFiltersBtn').addEventListener('click', resetFilters);
+
+            // Date Range Controllers
+            document.getElementById('startDateInput').addEventListener('change', handleDateInputChange);
+            document.getElementById('endDateInput').addEventListener('change', handleDateInputChange);
+            document.getElementById('startSlider').addEventListener('input', handleSliderChange);
+            document.getElementById('endSlider').addEventListener('input', handleSliderChange);
+
+            document.querySelectorAll('.preset-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const range = btn.getAttribute('data-range');
+                    applyDatePreset(range);
+                });
+            });
+
+            // Close multi-select dropdowns on outside click
+            document.addEventListener('click', (e) => {
+                if (!e.target.closest('.ms-btn') && !e.target.closest('.ms-dropdown')) {
+                    document.querySelectorAll('.ms-dropdown').forEach(dd => dd.classList.add('hidden'));
+                }
+            });
+        }
+
+        function toggleModal(show) {
+            document.getElementById('mappingModal').classList.toggle('hidden', !show);
+        }
+
+        function clearAllData() {
+            rawMktData = [];
+            rawSalesData = [];
+            processedDailyMkt = [];
+            processedSalesDaily = [];
+            extraDimensions = [];
+            activeFilters = {};
+
+            if (marketingChartInstance) marketingChartInstance.destroy();
+            if (salesChartInstance) salesChartInstance.destroy();
+
+            document.getElementById('summaryStatsTableBody').innerHTML = `<tr><td colspan="4" class="text-center py-4 text-gray-500 italic">No marketing data loaded.</td></tr>`;
+            document.getElementById('filterControlsContainer').innerHTML = '';
+            document.getElementById('salesMetric1Select').innerHTML = '';
+            document.getElementById('salesMetric2Select').innerHTML = '';
+            document.getElementById('snapshotBanner').classList.add('hidden');
+        }
+
+        // --- Date Range Bounds & Slider Management ---
+        function initializeDateBounds() {
+            if (processedDailyMkt.length === 0) return;
+
+            const allDates = processedDailyMkt.map(d => d.date).sort();
+            globalMinDateStr = allDates[0];
+            globalMaxDateStr = allDates[allDates.length - 1];
+
+            windowStartStr = globalMinDateStr;
+            windowEndStr = globalMaxDateStr;
+
+            document.getElementById('startDateInput').min = globalMinDateStr;
+            document.getElementById('startDateInput').max = globalMaxDateStr;
+            document.getElementById('startDateInput').value = globalMinDateStr;
+
+            document.getElementById('endDateInput').min = globalMinDateStr;
+            document.getElementById('endDateInput').max = globalMaxDateStr;
+            document.getElementById('endDateInput').value = globalMaxDateStr;
+
+            document.getElementById('startSlider').value = 0;
+            document.getElementById('endSlider').value = 100;
+            document.getElementById('sliderStartVal').innerText = '0%';
+            document.getElementById('sliderEndVal').innerText = '100%';
+        }
+
+        function handleDateInputChange() {
+            const startVal = document.getElementById('startDateInput').value;
+            const endVal = document.getElementById('endDateInput').value;
+
+            if (startVal && endVal && startVal <= endVal) {
+                windowStartStr = startVal;
+                windowEndStr = endVal;
+
+                const minMs = new Date(globalMinDateStr).getTime();
+                const maxMs = new Date(globalMaxDateStr).getTime();
+                const totalMs = maxMs - minMs || 1;
+
+                const startPct = Math.round(((new Date(startVal).getTime() - minMs) / totalMs) * 100);
+                const endPct = Math.round(((new Date(endVal).getTime() - minMs) / totalMs) * 100);
+
+                document.getElementById('startSlider').value = startPct;
+                document.getElementById('endSlider').value = endPct;
+                document.getElementById('sliderStartVal').innerText = `${startPct}%`;
+                document.getElementById('sliderEndVal').innerText = `${endPct}%`;
+
+                updateDashboard();
+            }
+        }
+
+        function handleSliderChange() {
+            let startPct = parseInt(document.getElementById('startSlider').value);
+            let endPct = parseInt(document.getElementById('endSlider').value);
+
+            if (startPct > endPct) {
+                startPct = endPct;
+                document.getElementById('startSlider').value = startPct;
+            }
+
+            document.getElementById('sliderStartVal').innerText = `${startPct}%`;
+            document.getElementById('sliderEndVal').innerText = `${endPct}%`;
+
+            const minMs = new Date(globalMinDateStr).getTime();
+            const maxMs = new Date(globalMaxDateStr).getTime();
+            const totalMs = maxMs - minMs;
+
+            const startMs = minMs + (totalMs * (startPct / 100));
+            const endMs = minMs + (totalMs * (endPct / 100));
+
+            windowStartStr = new Date(startMs).toISOString().split('T')[0];
+            windowEndStr = new Date(endMs).toISOString().split('T')[0];
+
+            document.getElementById('startDateInput').value = windowStartStr;
+            document.getElementById('endDateInput').value = windowEndStr;
+
+            updateDashboard();
+        }
+
+        function applyDatePreset(preset) {
+            if (!globalMaxDateStr) return;
+
+            const maxDate = new Date(globalMaxDateStr);
+            let startDate = new Date(globalMinDateStr);
+
+            if (preset === '30') {
+                startDate = new Date(maxDate);
+                startDate.setDate(maxDate.getDate() - 30);
+            } else if (preset === '60') {
+                startDate = new Date(maxDate);
+                startDate.setDate(maxDate.getDate() - 60);
+            }
+
+            windowStartStr = startDate.toISOString().split('T')[0];
+            windowEndStr = globalMaxDateStr;
+
+            document.getElementById('startDateInput').value = windowStartStr;
+            document.getElementById('endDateInput').value = windowEndStr;
+
+            handleDateInputChange();
+        }
+
+        // --- File Upload & Parsing ---
+        function handleFileUpload(event, type) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const filename = file.name.toLowerCase();
+            if (filename.endsWith('.csv')) {
+                Papa.parse(file, {
+                    header: true,
+                    skipEmptyLines: true,
+                    complete: (results) => populateMappingUI(type, results.data)
+                });
+            } else if (filename.endsWith('.xlsx') || filename.endsWith('.xls')) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const workbook = XLSX.read(e.target.result, { type: 'binary' });
+                    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+                    const json = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+                    populateMappingUI(type, json);
+                };
+                reader.readAsBinaryString(file);
+            }
+        }
+
+        function populateMappingUI(type, data) {
+            if (!data || data.length === 0) return;
+            const headers = Object.keys(data[0]);
+
+            if (type === 'mkt') {
+                rawMktData = data;
+                document.getElementById('mktMappingContainer').classList.remove('hidden');
+                document.getElementById('mktExtraDimContainer').classList.remove('hidden');
+
+                const mktFields = ['event_name', 'event_start_date', 'event_end_date', 'promotion_group', 'promotion_type', 'seasonal_flag', 'product_category', 'promotion_value'];
+                mktFields.forEach(field => {
+                    const select = document.getElementById(`map_${field}`);
+                    select.innerHTML = '<option value="">-- None --</option>' + headers.map(h => `<option value="${h}" ${autoMatchHeader(field, h) ? 'selected' : ''}>${h}</option>`).join('');
+                });
+
+                const extraContainer = document.getElementById('mktExtraCheckboxes');
+                extraContainer.innerHTML = headers.map(h => `
+                    <label class="flex items-center space-x-1 cursor-pointer">
+                        <input type="checkbox" value="${h}" class="mkt-extra-dim rounded bg-charcoal border-charcoal-border text-accent-green focus:ring-0">
+                        <span class="truncate">${h}</span>
+                    </label>
+                `).join('');
+            } else if (type === 'sales') {
+                rawSalesData = data;
+                document.getElementById('salesMappingContainer').classList.remove('hidden');
+
+                const salesSelects = document.querySelectorAll('.sales-map-select');
+                salesSelects.forEach(select => {
+                    select.innerHTML = '<option value="">-- Select --</option>' + headers.map(h => `<option value="${h}">${h}</option>`).join('');
+                });
+
+                const dateSelect = document.getElementById('map_sales_date');
+                const matchedDate = headers.find(h => h.toLowerCase().includes('date'));
+                if (matchedDate) dateSelect.value = matchedDate;
+
+                const wideContainer = document.getElementById('salesWideCheckboxes');
+                wideContainer.innerHTML = headers.map(h => `
+                    <label class="flex items-center space-x-1 cursor-pointer">
+                        <input type="checkbox" value="${h}" class="sales-wide-col rounded bg-charcoal border-charcoal-border text-accent-green focus:ring-0">
+                        <span class="truncate">${h}</span>
+                    </label>
+                `).join('');
+            }
+        }
+
+        function autoMatchHeader(field, header) {
+            const f = field.toLowerCase().replace(/_/g, '');
+            const h = header.toLowerCase().replace(/_/g, '');
+            return h.includes(f) || f.includes(h);
+        }
+
+        // --- Data Mapping & Transformation ---
+        function applyDataMapping() {
+            if (rawMktData.length > 0) {
+                const getField = (f) => document.getElementById(`map_${f}`).value;
+                currentMktMapping = {
+                    event_name: getField('event_name'),
+                    event_start_date: getField('event_start_date'),
+                    event_end_date: getField('event_end_date'),
+                    promotion_group: getField('promotion_group'),
+                    promotion_type: getField('promotion_type'),
+                    seasonal_flag: getField('seasonal_flag'),
+                    product_category: getField('product_category'),
+                    promotion_value: getField('promotion_value')
+                };
+
+                extraDimensions = Array.from(document.querySelectorAll('.mkt-extra-dim:checked')).map(cb => cb.value);
+                processedDailyMkt = [];
+
+                rawMktData.forEach(row => {
+                    const startDate = parseDate(row[currentMktMapping.event_start_date]);
+                    const endDate = parseDate(row[currentMktMapping.event_end_date]);
+                    if (!startDate || !endDate) return;
+
+                    const cur = new Date(startDate);
+                    while (cur <= endDate) {
+                        const dateStr = cur.toISOString().split('T')[0];
+                        const entry = {
+                            date: dateStr,
+                            event_name: row[currentMktMapping.event_name] || 'Unnamed Event',
+                            promotion_group: row[currentMktMapping.promotion_group] || 'Unassigned',
+                            promotion_type: row[currentMktMapping.promotion_type] || 'client-provided',
+                            seasonal_flag: row[currentMktMapping.seasonal_flag] || 'None',
+                            product_category: row[currentMktMapping.product_category] || 'All',
+                            promotion_value: parseFloat(row[currentMktMapping.promotion_value]) || 1
+                        };
+
+                        extraDimensions.forEach(dim => {
+                            entry[dim] = row[dim] || 'N/A';
+                        });
+
+                        processedDailyMkt.push(entry);
+                        cur.setDate(cur.getDate() + 1);
+                    }
+                });
+            }
+
+            if (rawSalesData.length > 0) {
+                const salesDateCol = document.getElementById('map_sales_date').value;
+                const formatType = document.getElementById('salesFormatType').value;
+                processedSalesDaily = [];
+
+                if (formatType === 'wide') {
+                    const selectedCols = Array.from(document.querySelectorAll('.sales-wide-col:checked')).map(cb => cb.value);
+                    rawSalesData.forEach(row => {
+                        const dateStr = parseDate(row[salesDateCol])?.toISOString().split('T')[0];
+                        if (!dateStr) return;
+
+                        selectedCols.forEach(col => {
+                            processedSalesDaily.push({
+                                date: dateStr,
+                                metric: col,
+                                value: parseFloat(row[col]) || 0
+                            });
+                        });
+                    });
+                } else {
+                    const dimCol = document.getElementById('map_sales_dim').value;
+                    const valCol = document.getElementById('map_sales_val').value;
+                    rawSalesData.forEach(row => {
+                        const dateStr = parseDate(row[salesDateCol])?.toISOString().split('T')[0];
+                        if (!dateStr) return;
+                        processedSalesDaily.push({
+                            date: dateStr,
+                            metric: row[dimCol] || 'Outcome',
+                            value: parseFloat(row[valCol]) || 0
+                        });
+                    });
+                }
+            }
+
+            initializeDateBounds();
+            setupMultiSelectFilters();
+            setupSalesMetricSelectors();
+            updateDashboard();
+            toggleModal(false);
+        }
+
+        function parseDate(val) {
+            if (!val) return null;
+            const d = new Date(val);
+            return isNaN(d.getTime()) ? null : d;
+        }
+
+        // --- Multi-Select Filter Generation & Handling ---
+        function setupMultiSelectFilters() {
+            const container = document.getElementById('filterControlsContainer');
+            container.innerHTML = '';
+
+            const defaultFields = [
+                { id: 'promotion_type', label: 'Promo Type', defaultVal: 'client-provided' },
+                { id: 'promotion_group', label: 'Promo Group', defaultVal: 'ALL' },
+                { id: 'product_category', label: 'Product Category', defaultVal: 'ALL' },
+                { id: 'seasonal_flag', label: 'Seasonal Flag', defaultVal: 'ALL' },
+                { id: 'event_name', label: 'Event Name', defaultVal: 'ALL' }
+            ];
+
+            const allFields = [...defaultFields, ...extraDimensions.map(d => ({ id: d, label: d, defaultVal: 'ALL' }))];
+
+            activeFilters = {};
+
+            allFields.forEach(field => {
+                const uniqueVals = Array.from(new Set(processedDailyMkt.map(d => d[field.id]))).filter(Boolean).sort();
+                
+                if (field.defaultVal !== 'ALL' && uniqueVals.includes(field.defaultVal)) {
+                    activeFilters[field.id] = new Set([field.defaultVal]);
+                } else {
+                    activeFilters[field.id] = new Set(uniqueVals);
+                }
+
+                const wrapper = document.createElement('div');
+                wrapper.className = 'relative flex flex-col space-y-1';
+
+                wrapper.innerHTML = `
+                    <label class="text-[10px] uppercase font-bold text-gray-400 truncate">${field.label}</label>
+                    <button type="button" class="ms-btn w-full bg-charcoal border border-charcoal-border text-xs text-white rounded px-2.5 py-1.5 flex justify-between items-center hover:border-accent-green transition" data-field="${field.id}">
+                        <span id="ms_summary_${field.id}" class="truncate pr-1">Calculating...</span>
+                        <span class="text-[10px] text-accent-green">▼</span>
+                    </button>
+                    <div id="ms_dd_${field.id}" class="ms-dropdown hidden absolute top-full left-0 mt-1 w-64 bg-charcoal-card border border-charcoal-border rounded-lg shadow-2xl p-3 z-50 space-y-2">
+                        <input type="text" placeholder="Search ${field.label}..." class="ms-search w-full bg-charcoal border border-charcoal-border text-xs text-white rounded p-1.5 focus:outline-none focus:border-accent-green" data-field="${field.id}">
+                        <div class="flex justify-between items-center text-[10px] text-accent-green pt-1 pb-1 border-b border-charcoal-border">
+                            <button type="button" class="ms-select-all hover:underline" data-field="${field.id}">Select All</button>
+                            <button type="button" class="ms-clear-all hover:underline" data-field="${field.id}">Clear All</button>
+                        </div>
+                        <div class="ms-options max-h-48 overflow-y-auto space-y-1.5 text-xs text-gray-300 pr-1">
+                            ${uniqueVals.map(val => `
+                                <label class="flex items-center space-x-2 cursor-pointer hover:text-white truncate">
+                                    <input type="checkbox" value="${val}" class="ms-cb rounded bg-charcoal border-charcoal-border text-accent-green focus:ring-0" data-field="${field.id}" ${activeFilters[field.id].has(val) ? 'checked' : ''}>
+                                    <span class="truncate">${val}</span>
+                                </label>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+                container.appendChild(wrapper);
+                updateMultiSelectSummary(field.id, uniqueVals.length);
+            });
+
+            setupMultiSelectEvents();
+        }
+
+        function setupMultiSelectEvents() {
+            document.querySelectorAll('.ms-btn').forEach(btn => {
+                btn.onclick = (e) => {
+                    e.stopPropagation();
+                    const field = btn.getAttribute('data-field');
+                    const targetDropdown = document.getElementById(`ms_dd_${field}`);
+                    
+                    document.querySelectorAll('.ms-dropdown').forEach(dd => {
+                        if (dd !== targetDropdown) dd.classList.add('hidden');
+                    });
+                    
+                    targetDropdown.classList.toggle('hidden');
+                };
+            });
+
+            document.querySelectorAll('.ms-search').forEach(input => {
+                input.oninput = (e) => {
+                    const field = input.getAttribute('data-field');
+                    const query = e.target.value.toLowerCase();
+                    const dropdown = document.getElementById(`ms_dd_${field}`);
+                    dropdown.querySelectorAll('.ms-options label').forEach(label => {
+                        const text = label.textContent.toLowerCase();
+                        label.style.display = text.includes(query) ? 'flex' : 'none';
+                    });
+                };
+            });
+
+            document.querySelectorAll('.ms-select-all').forEach(btn => {
+                btn.onclick = () => {
+                    const field = btn.getAttribute('data-field');
+                    const dropdown = document.getElementById(`ms_dd_${field}`);
+                    const uniqueVals = [];
+                    dropdown.querySelectorAll('.ms-cb').forEach(cb => {
+                        cb.checked = true;
+                        uniqueVals.push(cb.value);
+                    });
+                    activeFilters[field] = new Set(uniqueVals);
+                    updateMultiSelectSummary(field, uniqueVals.length);
+                    updateDashboard();
+                };
+            });
+
+            document.querySelectorAll('.ms-clear-all').forEach(btn => {
+                btn.onclick = () => {
+                    const field = btn.getAttribute('data-field');
+                    const dropdown = document.getElementById(`ms_dd_${field}`);
+                    dropdown.querySelectorAll('.ms-cb').forEach(cb => {
+                        cb.checked = false;
+                    });
+                    activeFilters[field] = new Set();
+                    updateMultiSelectSummary(field, dropdown.querySelectorAll('.ms-cb').length);
+                    updateDashboard();
+                };
+            });
+
+            document.querySelectorAll('.ms-cb').forEach(cb => {
+                cb.onchange = () => {
+                    const field = cb.getAttribute('data-field');
+                    const dropdown = document.getElementById(`ms_dd_${field}`);
+                    const totalCount = dropdown.querySelectorAll('.ms-cb').length;
+
+                    if (!activeFilters[field]) activeFilters[field] = new Set();
+
+                    if (cb.checked) {
+                        activeFilters[field].add(cb.value);
+                    } else {
+                        activeFilters[field].delete(cb.value);
+                    }
+
+                    updateMultiSelectSummary(field, totalCount);
+                    updateDashboard();
+                };
+            });
+        }
+
+        function updateMultiSelectSummary(field, totalCount) {
+            const summarySpan = document.getElementById(`ms_summary_${field}`);
+            if (!summarySpan) return;
+
+            const selectedSet = activeFilters[field] || new Set();
+            const count = selectedSet.size;
+
+            if (count === 0) {
+                summarySpan.innerText = 'None Selected';
+                summarySpan.className = 'truncate pr-1 text-red-400 font-semibold';
+            } else if (count === totalCount) {
+                summarySpan.innerText = 'All Selected';
+                summarySpan.className = 'truncate pr-1 text-accent-green font-semibold';
+            } else {
+                const sampleVals = Array.from(selectedSet).slice(0, 2).join(', ');
+                summarySpan.innerText = `${count} Selected (${sampleVals}...)`;
+                summarySpan.className = 'truncate pr-1 text-gray-200';
+            }
+        }
+
+        function resetFilters() {
+            for (let field in activeFilters) {
+                const dropdown = document.getElementById(`ms_dd_${field}`);
+                if (dropdown) {
+                    const allVals = [];
+                    dropdown.querySelectorAll('.ms-cb').forEach(cb => {
+                        if (field === 'promotion_type' && cb.value === 'client-provided') {
+                            cb.checked = true;
+                            allVals.push(cb.value);
+                        } else if (field !== 'promotion_type') {
+                            cb.checked = true;
+                            allVals.push(cb.value);
+                        } else {
+                            cb.checked = false;
+                        }
+                    });
+                    activeFilters[field] = new Set(allVals);
+                    updateMultiSelectSummary(field, dropdown.querySelectorAll('.ms-cb').length);
+                }
+            }
+            updateDashboard();
+        }
+
+        // --- Core Visualization & Analytics Dashboard ---
+        function updateDashboard() {
+            if (processedDailyMkt.length === 0) return;
+
+            const filteredMkt = processedDailyMkt.filter(item => {
+                if (item.date < windowStartStr || item.date > windowEndStr) return false;
+
+                for (let key in activeFilters) {
+                    const selectedSet = activeFilters[key];
+                    if (selectedSet && selectedSet.size > 0) {
+                        if (!selectedSet.has(item[key])) return false;
+                    }
+                }
+                return true;
+            });
+
+            const groupByKey = document.getElementById('groupBySelect').value;
+
+            renderMarketingTimeline(filteredMkt, groupByKey);
+            renderSummaryStats(processedDailyMkt);
+            renderSalesChart(processedSalesDaily);
+        }
+
+        // --- Non-overlapping Full-Width Timeline Swimlane Chart ---
+        function renderMarketingTimeline(data, groupByKey) {
+            const ctx = document.getElementById('marketingChart').getContext('2d');
+
+            if (data.length === 0) {
+                if (marketingChartInstance) marketingChartInstance.destroy();
+                return;
+            }
+
+            const groups = Array.from(new Set(data.map(d => d[groupByKey]))).filter(Boolean).sort();
+            
+            const rowHeight = 48;
+            const paddingHeight = 70;
+            const viewWindowHeight = 540;
+
+            const calculatedHeight = Math.max(viewWindowHeight, groups.length * rowHeight + paddingHeight);
+            
+            const chartContainer = document.getElementById('mktChartContainer');
+            chartContainer.style.height = `${calculatedHeight}px`;
+
+            const dailyMap = {};
+            data.forEach(item => {
+                const g = item[groupByKey];
+                const d = item.date;
+                const key = `${g}___${d}`;
+                if (!dailyMap[key]) {
+                    dailyMap[key] = { count: 0, events: new Set() };
+                }
+                dailyMap[key].count += item.promotion_value;
+                dailyMap[key].events.add(item.event_name);
+            });
+
+            const datasets = groups.map((group, idx) => {
+                const color = COLOR_PALETTE[idx % COLOR_PALETTE.length];
+                const dataPoints = [];
+
+                for (let key in dailyMap) {
+                    const [g, dateStr] = key.split('___');
+                    if (g === group) {
+                        dataPoints.push({
+                            x: [`${dateStr}T00:00:00`, `${dateStr}T23:59:59`],
+                            y: group,
+                            dateStr: dateStr,
+                            totalCount: dailyMap[key].count,
+                            eventNames: Array.from(dailyMap[key].events)
+                        });
+                    }
+                }
+
+                return {
+                    label: group,
+                    data: dataPoints,
+                    backgroundColor: color,
+                    borderColor: color,
+                    borderWidth: 1,
+                    borderRadius: 3,
+                    barThickness: 16
+                };
+            });
+
+            if (marketingChartInstance) marketingChartInstance.destroy();
+
+            marketingChartInstance = new Chart(ctx, {
+                type: 'bar',
+                data: { labels: groups, datasets },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            type: 'time',
+                            time: { unit: 'day' },
+                            min: windowStartStr,
+                            max: windowEndStr,
+                            bounds: 'data',
+                            offset: false,
+                            grid: { color: '#2A2F35' },
+                            ticks: { color: '#9CA3AF' }
+                        },
+                        y: {
+                            type: 'category',
+                            labels: groups,
+                            grid: { color: '#1A1D21' },
+                            ticks: {
+                                color: '#FFFFFF',
+                                font: { weight: 'bold', size: 12 }
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top',
+                            labels: { color: '#E5E7EB', font: { size: 11 }, usePointStyle: true, boxWidth: 8 }
+                        },
+                        tooltip: {
+                            backgroundColor: '#1A1D21',
+                            borderColor: '#2A2F35',
+                            borderWidth: 1,
+                            titleColor: '#10B981',
+                            bodyColor: '#E5E7EB',
+                            callbacks: {
+                                title: (items) => {
+                                    if (items.length) {
+                                        const raw = items[0].raw;
+                                        document.getElementById('syncDateHover').innerText = `Hover Date: ${raw.dateStr}`;
+                                        syncChartCrosshair(raw.dateStr);
+                                        return `Date: ${raw.dateStr}`;
+                                    }
+                                    return '';
+                                },
+                                label: (context) => {
+                                    const raw = context.raw;
+                                    return [
+                                        `Group: ${raw.y}`,
+                                        `Status: ACTIVE (ON)`,
+                                        `Total Active Events: ${raw.totalCount}`,
+                                        `Events: ${raw.eventNames.join(', ')}`
+                                    ];
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // --- Summary Statistics Computation ---
+        function renderSummaryStats(allMktData) {
+            const tbody = document.getElementById('summaryStatsTableBody');
+            tbody.innerHTML = '';
+
+            const clientData = allMktData.filter(d => d.promotion_type === 'client-provided' && d.date >= windowStartStr && d.date <= windowEndStr);
+            const groups = Array.from(new Set(clientData.map(d => d.promotion_group))).filter(Boolean).sort();
+
+            if (groups.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="4" class="text-center py-4 text-gray-500 italic">No 'client-provided' promotional groups found in selected date range.</td></tr>`;
+                return;
+            }
+
+            groups.forEach(group => {
+                const groupData = clientData.filter(d => d.promotion_group === group);
+                const activeDates = Array.from(new Set(groupData.map(d => d.date))).sort();
+                
+                const numDaysOn = activeDates.length;
+                const eventInstances = new Set(groupData.map(d => `${d.event_name}_${d.date}`)).size;
+
+                let streaks = [];
+                if (activeDates.length > 0) {
+                    let currentStreak = 1;
+                    for (let i = 1; i < activeDates.length; i++) {
+                        const prev = new Date(activeDates[i - 1]);
+                        const curr = new Date(activeDates[i]);
+                        const diffDays = Math.round((curr - prev) / (1000 * 60 * 60 * 24));
+
+                        if (diffDays === 1) {
+                            currentStreak++;
+                        } else {
+                            streaks.push(currentStreak);
+                            currentStreak = 1;
+                        }
+                    }
+                    streaks.push(currentStreak);
+                }
+
+                const avgStreakLength = streaks.length > 0 
+                    ? (streaks.reduce((a, b) => a + b, 0) / streaks.length).toFixed(1) 
+                    : 0;
+
+                const row = document.createElement('tr');
+                row.className = 'hover:bg-charcoal-hover transition';
+                row.innerHTML = `
+                    <td class="py-3 px-4 font-semibold text-white flex items-center gap-2">
+                        <span class="w-1.5 h-1.5 rounded-full bg-accent-green"></span> ${group}
+                    </td>
+                    <td class="py-3 px-4 text-center font-mono text-accent-green font-bold">${numDaysOn}</td>
+                    <td class="py-3 px-4 text-center font-mono">${eventInstances}</td>
+                    <td class="py-3 px-4 text-center font-mono text-emerald-400">${avgStreakLength} days</td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        // --- Sales Overlay (Dual Axis, Max 2 Metrics) ---
+        function setupSalesMetricSelectors() {
+            if (!processedSalesDaily || processedSalesDaily.length === 0) return;
+
+            const metrics = Array.from(new Set(processedSalesDaily.map(d => d.metric))).sort();
+            const select1 = document.getElementById('salesMetric1Select');
+            const select2 = document.getElementById('salesMetric2Select');
+
+            select1.innerHTML = metrics.map(m => `<option value="${m}">${m}</option>`).join('');
+            select2.innerHTML = '<option value="none">-- None --</option>' + metrics.map(m => `<option value="${m}">${m}</option>`).join('');
+
+            if (metrics.length >= 1) select1.value = metrics[0];
+            if (metrics.length >= 2) select2.value = metrics[1];
+        }
+
+        function renderSalesChart(salesData) {
+            const ctx = document.getElementById('salesChart').getContext('2d');
+
+            if (!salesData || salesData.length === 0) {
+                if (salesChartInstance) salesChartInstance.destroy();
+                return;
+            }
+
+            const metric1 = document.getElementById('salesMetric1Select').value;
+            const metric2 = document.getElementById('salesMetric2Select').value;
+
+            if (!metric1) return;
+
+            const dates = Array.from(new Set(salesData.map(d => d.date))).filter(d => d >= windowStartStr && d <= windowEndStr).sort();
+
+            const metric1Data = dates.map(d => {
+                const match = salesData.find(item => item.date === d && item.metric === metric1);
+                return match ? match.value : 0;
+            });
+
+            const datasets = [
+                {
+                    label: metric1,
+                    data: dates.map((d, i) => ({ x: d, y: metric1Data[i] })),
+                    borderColor: '#10B981',
+                    backgroundColor: '#10B981',
+                    yAxisID: 'y',
+                    borderWidth: 2,
+                    pointRadius: 0,
+                    pointHoverRadius: 5,
+                    tension: 0.1
+                }
+            ];
+
+            if (metric2 && metric2 !== 'none' && metric2 !== metric1) {
+                const metric2Data = dates.map(d => {
+                    const match = salesData.find(item => item.date === d && item.metric === metric2);
+                    return match ? match.value : 0;
+                });
+
+                datasets.push({
+                    label: metric2,
+                    data: dates.map((d, i) => ({ x: d, y: metric2Data[i] })),
+                    borderColor: '#00E676',
+                    backgroundColor: '#00E676',
+                    yAxisID: 'y1',
+                    borderWidth: 2,
+                    pointRadius: 0,
+                    pointHoverRadius: 5,
+                    tension: 0.1
+                });
+            }
+
+            if (salesChartInstance) salesChartInstance.destroy();
+
+            salesChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: { datasets },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: { display: true, position: 'top', labels: { color: '#E5E7EB', font: { size: 11 }, usePointStyle: true } },
+                        tooltip: {
+                            backgroundColor: '#1A1D21',
+                            borderColor: '#2A2F35',
+                            borderWidth: 1,
+                            titleColor: '#10B981',
+                            bodyColor: '#E5E7EB',
+                            callbacks: {
+                                title: (items) => {
+                                    if (items.length) {
+                                        const d = items[0].raw.x;
+                                        document.getElementById('syncDateHover').innerText = `Hover Date: ${d}`;
+                                        syncChartCrosshair(d);
+                                    }
+                                    return items[0]?.raw.x;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            type: 'time',
+                            time: { unit: 'day' },
+                            min: windowStartStr,
+                            max: windowEndStr,
+                            bounds: 'data',
+                            offset: false,
+                            grid: { color: '#1A1D21' },
+                            ticks: { color: '#9CA3AF' }
+                        },
+                        y: {
+                            type: 'linear',
+                            display: true,
+                            position: 'left',
+                            title: { display: true, text: metric1, color: '#10B981' },
+                            grid: { color: '#2A2F35' },
+                            ticks: { color: '#9CA3AF' },
+                            beginAtZero: true
+                        },
+                        y1: {
+                            type: 'linear',
+                            display: metric2 && metric2 !== 'none' && metric2 !== metric1,
+                            position: 'right',
+                            title: { display: true, text: metric2, color: '#00E676' },
+                            grid: { drawOnChartArea: false },
+                            ticks: { color: '#9CA3AF' },
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+        }
+
+        // Crosshair Synchronizer across both time-series charts
+        function syncChartCrosshair(dateStr) {
+            if (!marketingChartInstance || !salesChartInstance) return;
+
+            [marketingChartInstance, salesChartInstance].forEach(chart => {
+                const activeElements = [];
+                chart.data.datasets.forEach((dataset, datasetIndex) => {
+                    const index = dataset.data.findIndex(p => p.x === dateStr || (Array.isArray(p.x) && p.dateStr === dateStr));
+                    if (index !== -1) {
+                        activeElements.push({ datasetIndex, index });
+                    }
+                });
+                if (activeElements.length > 0) {
+                    chart.setActiveElements(activeElements);
+                    chart.draw();
+                }
+            });
+        }
+
+        // --- Snapshot Export Ability ---
+        function exportSnapshotHTML() {
+            if (processedDailyMkt.length === 0) {
+                alert('Please load or import data before exporting a snapshot.');
+                return;
+            }
+
+            const snapshotPayload = {
+                rawMktData: rawMktData,
+                rawSalesData: rawSalesData,
+                currentMktMapping: currentMktMapping,
+                extraDimensions: extraDimensions,
+                timestamp: new Date().toLocaleString()
+            };
+
+            const jsonData = JSON.stringify(snapshotPayload);
+            let htmlContent = document.documentElement.outerHTML;
+
+            const scriptTag = `<script id="embedded-snapshot-data">window.EMBEDDED_SNAPSHOT_DATA = ${jsonData};<\/script>`;
+
+            if (htmlContent.includes('id="embedded-snapshot-data"')) {
+                htmlContent = htmlContent.replace(/<script id="embedded-snapshot-data">[\s\S]*?<\/script>/, scriptTag);
+            } else {
+                htmlContent = htmlContent.replace('</head>', `${scriptTag}\n</head>`);
+            }
+
+            const blob = new Blob([htmlContent], { type: 'text/html' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `Marketing_Calendar_Snapshot_${new Date().toISOString().slice(0, 10)}.html`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        function loadSnapshotData(snapshot) {
+            if (!snapshot) return;
+
+            rawMktData = snapshot.rawMktData || [];
+            rawSalesData = snapshot.rawSalesData || [];
+            currentMktMapping = snapshot.currentMktMapping || {};
+            extraDimensions = snapshot.extraDimensions || [];
+
+            document.getElementById('snapshotBanner').classList.remove('hidden');
+            document.getElementById('snapshotTime').innerText = `Created: ${snapshot.timestamp || 'N/A'}`;
+
+            processedDailyMkt = [];
+            rawMktData.forEach(row => {
+                const startDate = parseDate(row[currentMktMapping.event_start_date || 'event_start_date']);
+                const endDate = parseDate(row[currentMktMapping.event_end_date || 'event_end_date']);
+                if (!startDate || !endDate) return;
+
+                const cur = new Date(startDate);
+                while (cur <= endDate) {
+                    const dateStr = cur.toISOString().split('T')[0];
+                    const entry = {
+                        date: dateStr,
+                        event_name: row[currentMktMapping.event_name || 'event_name'] || 'Unnamed Event',
+                        promotion_group: row[currentMktMapping.promotion_group || 'promotion_group'] || 'Unassigned',
+                        promotion_type: row[currentMktMapping.promotion_type || 'promotion_type'] || 'client-provided',
+                        seasonal_flag: row[currentMktMapping.seasonal_flag || 'seasonal_flag'] || 'None',
+                        product_category: row[currentMktMapping.product_category || 'product_category'] || 'All',
+                        promotion_value: parseFloat(row[currentMktMapping.promotion_value || 'promotion_value']) || 1
+                    };
+
+                    extraDimensions.forEach(dim => {
+                        entry[dim] = row[dim] || 'N/A';
+                    });
+
+                    processedDailyMkt.push(entry);
+                    cur.setDate(cur.getDate() + 1);
+                }
+            });
+
+            processedSalesDaily = [];
+            if (rawSalesData.length > 0) {
+                const sampleRow = rawSalesData[0];
+                const dateKey = Object.keys(sampleRow).find(k => k.toLowerCase().includes('date')) || 'date';
+                const metricKeys = Object.keys(sampleRow).filter(k => k !== dateKey);
+
+                rawSalesData.forEach(row => {
+                    const dateStr = parseDate(row[dateKey])?.toISOString().split('T')[0];
+                    if (!dateStr) return;
+
+                    metricKeys.forEach(m => {
+                        processedSalesDaily.push({
+                            date: dateStr,
+                            metric: m,
+                            value: parseFloat(row[m]) || 0
+                        });
+                    });
+                });
+            }
+
+            initializeDateBounds();
+            setupMultiSelectFilters();
+            setupSalesMetricSelectors();
+            updateDashboard();
+        }
+
+        // --- Generic Sample Data Generator ---
+        function loadSampleData() {
+            const startDate = new Date('2026-01-01');
+            const sampleMkt = [];
+            const sampleSales = [];
+
+            const genericGroups = [
+                'Group A', 'Group B', 'Group C', 'Group D', 'Group E',
+                'Group F', 'Group G', 'Group H', 'Group I', 'Group J',
+                'Group K', 'Group L', 'Group M', 'Group N', 'Group O'
+            ];
+            const types = ['client-provided', 'client-provided', 'competitor', 'client-provided'];
+            const categories = ['Womens Apparel', 'Mens Apparel', 'Footwear', 'Accessories'];
+
+            for (let i = 0; i < 90; i++) {
+                const cur = new Date(startDate);
+                cur.setDate(startDate.getDate() + i);
+                const dateStr = cur.toISOString().split('T')[0];
+
+                if (i % 2 === 0) {
+                    const duration = Math.floor(Math.random() * 5) + 1;
+                    const end = new Date(cur);
+                    end.setDate(cur.getDate() + duration);
+
+                    sampleMkt.push({
+                        event_name: `Promo Event ${Math.floor(i / 2) + 1}`,
+                        event_start_date: dateStr,
+                        event_end_date: end.toISOString().split('T')[0],
+                        promotion_group: genericGroups[i % genericGroups.length],
+                        promotion_type: types[i % types.length],
+                        seasonal_flag: i % 15 === 0 ? 'Holiday' : 'Regular',
+                        product_category: categories[i % categories.length],
+                        promotion_value: 1
+                    });
+                }
+
+                sampleSales.push({ date: dateStr, metric: 'Revenue ($)', value: Math.floor(Math.random() * 50000) + 20000 });
+                sampleSales.push({ date: dateStr, metric: 'Orders', value: Math.floor(Math.random() * 500) + 100 });
+                sampleSales.push({ date: dateStr, metric: 'Media Spend ($)', value: Math.floor(Math.random() * 8000) + 1000 });
+            }
+
+            rawMktData = sampleMkt;
+            processedSalesDaily = sampleSales;
+
+            currentMktMapping = {
+                event_name: 'event_name',
+                event_start_date: 'event_start_date',
+                event_end_date: 'event_end_date',
+                promotion_group: 'promotion_group',
+                promotion_type: 'promotion_type',
+                seasonal_flag: 'seasonal_flag',
+                product_category: 'product_category',
+                promotion_value: 'promotion_value'
+            };
+
+            processedDailyMkt = [];
+            rawMktData.forEach(row => {
+                const s = new Date(row.event_start_date);
+                const e = new Date(row.event_end_date);
+                const cur = new Date(s);
+                while (cur <= e) {
+                    processedDailyMkt.push({
+                        date: cur.toISOString().split('T')[0],
+                        event_name: row.event_name,
+                        promotion_group: row.promotion_group,
+                        promotion_type: row.promotion_type,
+                        seasonal_flag: row.seasonal_flag,
+                        product_category: row.product_category,
+                        promotion_value: row.promotion_value
+                    });
+                    cur.setDate(cur.getDate() + 1);
+                }
+            });
+
+            initializeDateBounds();
+            setupMultiSelectFilters();
+            setupSalesMetricSelectors();
+            updateDashboard();
+        }
+    </script>
+</body>
+</html>
