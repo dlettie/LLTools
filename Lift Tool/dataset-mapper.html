@@ -639,6 +639,7 @@ td.highlight { background: rgba(20,184,166,.05); }
   <!-- TAB: Summary Stats -->
   <div id="tab-summary" class="hidden">
     <div class="section-label"><span class="section-num">03</span> Summary Statistics</div>
+    <div id="summary-category-tabs" style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;"></div>
     <div id="summary-pivot" class="table-outer" style="margin-bottom:12px;">
       <div class="table-scroll">
         <table class="pivot-table">
@@ -671,12 +672,28 @@ td.highlight { background: rgba(20,184,166,.05); }
       <button onclick="clearAllPairs()" style="font-family:var(--mono);font-size:.68rem;color:var(--muted);background:none;border:1px solid var(--border2);border-radius:3px;padding:3px 10px;cursor:pointer;">clear all</button>
     </div>
     <div id="pair-filter-chips" style="display:flex;flex-direction:column;gap:6px;margin-bottom:36px;"></div>
+
+    <div class="section-label"><span class="section-num">08</span> Pair Diagnostics</div>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+      <button onclick="downloadPairDiagnosticsCSV()" style="font-family:var(--mono);font-size:.68rem;color:var(--muted);background:none;border:1px solid var(--border2);border-radius:3px;padding:3px 10px;cursor:pointer;">download csv</button>
+      <span id="pairdiag-count" style="font-family:var(--mono);font-size:.68rem;color:var(--muted);"></span>
+    </div>
+    <div id="pairdiag-empty" style="font-family:var(--mono);font-size:.72rem;color:var(--muted);margin-bottom:8px;">Run Build Mapped Dataset to generate diagnostics.</div>
+    <div class="table-outer" id="pairdiag-wrap" style="display:none;margin-bottom:36px;">
+      <div class="table-scroll">
+        <table class="pivot-table">
+          <thead id="pairdiag-head"></thead>
+          <tbody id="pairdiag-body"></tbody>
+        </table>
+      </div>
+    </div>
   </div>
 
   <!-- TAB: Geo Lift -->
   <div id="tab-geo" class="hidden">
     <div class="section-label"><span class="section-num">04</span> Geo Level Lift Analysis</div>
-    <div id="geo-segment-tabs" style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;"></div>
+    <div id="geo-segment-tabs" style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;"></div>
+    <div id="geo-category-tabs" style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;"></div>
     <div id="geo-table-container" class="table-outer" style="margin-bottom:8px;">
       <div class="table-scroll">
         <table class="pivot-table" id="geo-table">
@@ -693,7 +710,8 @@ td.highlight { background: rgba(20,184,166,.05); }
   <!-- TAB: Daily Factor -->
   <div id="tab-daily" class="hidden">
     <div class="section-label"><span class="section-num">05</span> Daily Cumulative Factor</div>
-    <div id="daily-segment-tabs" style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;"></div>
+    <div id="daily-segment-tabs" style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;"></div>
+    <div id="daily-category-tabs" style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;"></div>
     <div class="table-outer" style="margin-bottom:8px;">
       <div class="table-scroll" id="daily-table-scroll">
         <table class="pivot-table" id="daily-table">
@@ -711,7 +729,8 @@ td.highlight { background: rgba(20,184,166,.05); }
   <div id="tab-cumlift" class="hidden">
     <div class="section-label"><span class="section-num">06</span> Lift</div>
     <div id="cumlift-arm-tabs" style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;"></div>
-    <div id="cumlift-segment-tabs" style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;"></div>
+    <div id="cumlift-segment-tabs" style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;"></div>
+    <div id="cumlift-category-tabs" style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;"></div>
     <div id="cumlift-body"></div>
     <div id="cumlift-footnote" style="font-family:var(--mono);font-size:.65rem;color:var(--muted);margin:10px 0 36px;">
       Baseline is factored by the fixed base AA factor (arm AA ÷ baseline AA) — held constant across every day, not recomputed daily ·
@@ -788,22 +807,84 @@ const DISPLAY_COLS = [
 
 // ── File parsing ──────────────────────────────────────────────────────────────
 function parseCSV(text) {
-  const lines = text.trim().split(/\r?\n/);
-  const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g,''));
-  return lines.slice(1).filter(l => l.trim()).map(line => {
-    // Handle quoted fields
-    const vals = [];
-    let cur = '', inQ = false;
-    for (let c of line) {
-      if (c === '"') { inQ = !inQ; }
-      else if (c === ',' && !inQ) { vals.push(cur.trim()); cur = ''; }
-      else cur += c;
+  const rows = [];
+  let row = [];
+  let cur = '';
+  let inQ = false;
+
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === '"') {
+      if (inQ && text[i + 1] === '"') {
+        cur += '"';
+        i++;
+      } else {
+        inQ = !inQ;
+      }
+      continue;
     }
-    vals.push(cur.trim());
-    const row = {};
-    headers.forEach((h, i) => { row[h] = vals[i] !== undefined ? vals[i] : ''; });
-    return row;
+    if (ch === ',' && !inQ) {
+      row.push(cur.trim());
+      cur = '';
+      continue;
+    }
+    if ((ch === '\n' || ch === '\r') && !inQ) {
+      if (ch === '\r' && text[i + 1] === '\n') i++;
+      row.push(cur.trim());
+      rows.push(row);
+      row = [];
+      cur = '';
+      continue;
+    }
+    cur += ch;
+  }
+
+  if (cur.length || row.length) {
+    row.push(cur.trim());
+    rows.push(row);
+  }
+
+  const nonEmpty = rows.filter(r => r.some(v => String(v || '').trim() !== ''));
+  if (!nonEmpty.length) return [];
+  const headers = nonEmpty[0].map(h => String(h || '').trim().replace(/^"|"$/g, ''));
+  return nonEmpty.slice(1).map(vals => {
+    const out = {};
+    headers.forEach((h, i) => { out[h] = vals[i] !== undefined ? vals[i] : ''; });
+    return out;
   });
+}
+
+function toNum(v) {
+  if (typeof v === 'number') return Number.isFinite(v) ? v : 0;
+  const s = String(v == null ? '' : v).trim();
+  if (!s) return 0;
+  const cleaned = s.replace(/,/g, '').replace(/\$/g, '');
+  const n = Number(cleaned);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function parseDateLoose(v) {
+  const raw = String(v == null ? '' : v).trim();
+  if (!raw) return null;
+
+  const iso = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[T\s].*)?$/);
+  if (iso) {
+    const y = Number(iso[1]), m = Number(iso[2]), d = Number(iso[3]);
+    const out = new Date(y, m - 1, d);
+    return isNaN(out) ? null : out;
+  }
+
+  const us = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})(?:\s.*)?$/);
+  if (us) {
+    let y = Number(us[3]);
+    if (y < 100) y += 2000;
+    const out = new Date(y, Number(us[1]) - 1, Number(us[2]));
+    return isNaN(out) ? null : out;
+  }
+
+  const d = new Date(raw);
+  if (isNaN(d)) return null;
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
 }
 
 // Columns each file must have to be usable. Checked against the parsed header
@@ -915,6 +996,10 @@ function distinctCellTypes() {
     if (ct) set.add(ct);
   });
   return [...set];
+}
+
+function distinctCategories(rows) {
+  return [...new Set(rows.map(r => r.category_nm || '(unknown)'))].filter(Boolean).sort();
 }
 
 function matchedHeaders() {
@@ -1080,15 +1165,30 @@ function switchTab(name) {
 // ── Pair filter ───────────────────────────────────────────────────────────────
 let excludedPairs = new Set();
 
+function applyPairExclusions(rows) {
+  if (!excludedPairs.size) return rows;
+  return rows.filter(r => !excludedPairs.has(String(r.pair)));
+}
+
+function rerenderAnalysisViews() {
+  const allRows = window._geoRows || [];
+  const scopedRows = applyPairExclusions(allRows);
+  renderAASummary(allRows);
+  renderGeoTable(scopedRows);
+  renderDailyFactor(scopedRows);
+  renderCumLift(scopedRows);
+}
+
 function buildPairFilter(rows) {
-  // Build pair -> { [cell_type]: DMA } lookup
+  // Build pair -> { [cell_type]: DMA list } lookup
   const pairDMAs = {};
   rows.forEach(r => {
     if (!r.pair) return;
     if (!isAnalyzedType(r.cell_type)) return;
     const p = String(r.pair);
     if (!pairDMAs[p]) pairDMAs[p] = {};
-    if (!pairDMAs[p][r.cell_type]) pairDMAs[p][r.cell_type] = r.DMA || r.geo_id;
+    if (!pairDMAs[p][r.cell_type]) pairDMAs[p][r.cell_type] = new Set();
+    pairDMAs[p][r.cell_type].add(r.DMA || r.geo_id || '');
   });
 
   const pairs = Object.keys(pairDMAs).sort((a, b) => parseInt(a) - parseInt(b));
@@ -1098,8 +1198,8 @@ function buildPairFilter(rows) {
   const arms = armTypes();
 
   document.getElementById('pair-filter-chips').innerHTML = pairs.map(p => {
-    const baseDMA = pairDMAs[p][bType] || '—';
-    const armParts = arms.map(a => `<span style="color:var(--muted);margin:0 4px;">vs</span><span style="color:#14b8a6">${a}: ${pairDMAs[p][a] || '—'}</span>`).join('');
+    const baseDMA = pairDMAs[p][bType] ? summarizeDMAList(pairDMAs[p][bType]) : '—';
+    const armParts = arms.map(a => `<span style="color:var(--muted);margin:0 4px;">vs</span><span style="color:#14b8a6">${a}: ${pairDMAs[p][a] ? summarizeDMAList(pairDMAs[p][a]) : '—'}</span>`).join('');
     return `<button class="pair-chip active" id="chip-${p}" onclick="togglePair('${p}')">
       <span style="color:var(--muted);margin-right:5px;">#${p}</span>
       <span style="color:#8b5cf6">${bType}: ${baseDMA}</span>
@@ -1117,13 +1217,13 @@ function togglePair(p) {
     excludedPairs.add(p);
     chip.classList.remove('active');
   }
-  renderAASummary(window._geoRows);
+  rerenderAnalysisViews();
 }
 
 function selectAllPairs() {
   excludedPairs.clear();
   document.querySelectorAll('.pair-chip').forEach(c => c.classList.add('active'));
-  renderAASummary(window._geoRows);
+  rerenderAnalysisViews();
 }
 
 function clearAllPairs() {
@@ -1131,7 +1231,98 @@ function clearAllPairs() {
     excludedPairs.add(c.id.replace('chip-', ''));
     c.classList.remove('active');
   });
-  renderAASummary(window._geoRows);
+  rerenderAnalysisViews();
+}
+
+function escHtml(v) {
+  return String(v == null ? '' : v)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function renderPairDiagnostics() {
+  const data = window._pairDiagnostics || { unmatched: [], ambiguous: [] };
+  const rows = [
+    ...data.unmatched.map(r => ({ issue: 'no matched-markets id', ...r })),
+    ...data.ambiguous.map(r => ({ issue: 'ambiguous matched id', ...r }))
+  ];
+
+  const wrap = document.getElementById('pairdiag-wrap');
+  const empty = document.getElementById('pairdiag-empty');
+  const count = document.getElementById('pairdiag-count');
+
+  count.textContent = `${rows.length.toLocaleString()} geo diagnostics`;
+
+  if (!rows.length) {
+    wrap.style.display = 'none';
+    empty.textContent = 'No pairing diagnostics found. All geo IDs resolved to exactly one pair.';
+    return;
+  }
+
+  empty.textContent = '';
+  wrap.style.display = '';
+
+  document.getElementById('pairdiag-head').innerHTML = `
+    <tr>
+      <th>Issue</th>
+      <th>Geo ID</th>
+      <th>DMA</th>
+      <th>Cell Type</th>
+      <th>Rows</th>
+      <th>Candidate Pairs</th>
+    </tr>`;
+
+  document.getElementById('pairdiag-body').innerHTML = rows.map(r => `
+    <tr>
+      <td>${escHtml(r.issue)}</td>
+      <td>${escHtml(r.geo_id)}</td>
+      <td>${escHtml(r.dma)}</td>
+      <td>${escHtml(r.cell_type || '—')}</td>
+      <td>${(r.rows || 0).toLocaleString()}</td>
+      <td>${escHtml(r.candidate_pairs || '—')}</td>
+    </tr>`).join('');
+}
+
+function csvEscape(v) {
+  const s = String(v == null ? '' : v);
+  if (/[",\n\r]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+  return s;
+}
+
+function downloadPairDiagnosticsCSV() {
+  const data = window._pairDiagnostics || { unmatched: [], ambiguous: [] };
+  const rows = [
+    ...data.unmatched.map(r => ({ issue: 'no matched-markets id', ...r })),
+    ...data.ambiguous.map(r => ({ issue: 'ambiguous matched id', ...r }))
+  ];
+
+  if (!rows.length) {
+    showBanner('warn', 'No pair diagnostics to export yet. Build the mapped dataset first.');
+    return;
+  }
+
+  const hdr = ['issue', 'geo_id', 'dma', 'cell_type', 'rows', 'candidate_pairs'];
+  const lines = [hdr.join(',')].concat(rows.map(r => [
+    r.issue,
+    r.geo_id,
+    r.dma,
+    r.cell_type || '',
+    r.rows || 0,
+    r.candidate_pairs || ''
+  ].map(csvEscape).join(',')));
+
+  const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'pair_diagnostics.csv';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 
@@ -1140,8 +1331,9 @@ function clearAllPairs() {
 function processData() {
   showBanner('');
   try {
-    const expStart = new Date(document.getElementById('exp-start').value + 'T00:00:00');
-    const expEnd   = new Date(document.getElementById('exp-end').value   + 'T00:00:00');
+    const expStart = parseDateLoose(document.getElementById('exp-start').value);
+    const expEnd   = parseDateLoose(document.getElementById('exp-end').value);
+    if (!expStart || !expEnd) throw new Error('invalid experiment start/end date');
     const aaStart  = new Date(expStart); aaStart.setDate(aaStart.getDate() - 30);
 
     // Stash for the Cumulative Lift tab's AC (post-experiment) derivation only.
@@ -1149,7 +1341,7 @@ function processData() {
     window._expStart = expStart;
     window._expEnd   = expEnd;
     const acEndVal = document.getElementById('exp-ac-end').value;
-    window._acEnd  = acEndVal ? new Date(acEndVal + 'T00:00:00') : null;
+    window._acEnd  = acEndVal ? parseDateLoose(acEndVal) : null;
 
     // Normalize any DMA-style id to one canonical form so all three files join.
     // Strips a leading 200000 platform offset (200574 -> 574) and trailing ".0".
@@ -1182,7 +1374,7 @@ function processData() {
       });
     });
 
-    // -- Build pair lookup: normalized DMA id -> pair number
+    // -- Build pair lookup: normalized DMA id -> pair number(s)
     // Pairing doesn't care about role, only which columns hold DMA ids, so this
     // naturally handles any number of arms.
     const idCols = [state.roleMap.baseline, ...state.roleMap.arms].map(c => c.idCol);
@@ -1191,28 +1383,63 @@ function processData() {
       const pairNum = i + 1;
       idCols.forEach(col => {
         const id = normId(r[col]);
-        if (id !== '') pairLookup[id] = pairNum;
+        if (id === '') return;
+        if (!pairLookup[id]) pairLookup[id] = new Set();
+        pairLookup[id].add(pairNum);
       });
     });
 
     // -- Assign period
     function getPeriod(dateStr) {
-      const d = new Date(dateStr + 'T00:00:00');
-      if (isNaN(d)) return 'DNU';
+      const d = parseDateLoose(dateStr);
+      if (!d) return 'DNU';
       if (d >= expStart && d <= expEnd)  return 'AB';
       if (d >= aaStart  && d < expStart) return 'AA';
       return 'DNU';
     }
 
     // -- Merge
-    let matchedCount = 0, pairedCount = 0;
+    const unmatchedByGeo = {};
+    const ambiguousByGeo = {};
+
+    let matchedCount = 0, pairedCount = 0, ambiguousPairCount = 0, noPairMatchCount = 0;
     mergedRows = state.sales.map(row => {
       const geoId = normId(row['geo_id']);
       const cellInfo = cellsLookup[geoId] || {};
       if (cellInfo.cell) matchedCount++;
 
-      const pair = pairLookup[geoId] || '';
+      const pairSet = pairLookup[geoId] || null;
+      let pair = '';
+      if (pairSet && pairSet.size === 1) pair = [...pairSet][0];
+      if (pairSet && pairSet.size > 1) ambiguousPairCount++;
+      if (!pairSet) noPairMatchCount++;
       if (pair) pairedCount++;
+
+      if (!pairSet) {
+        if (!unmatchedByGeo[geoId]) {
+          unmatchedByGeo[geoId] = {
+            geo_id: geoId,
+            dma: cellInfo.DMA || geoId,
+            cell_type: cellInfo.cell_type || '',
+            rows: 0
+          };
+        }
+        unmatchedByGeo[geoId].rows += 1;
+      }
+
+      if (pairSet && pairSet.size > 1) {
+        if (!ambiguousByGeo[geoId]) {
+          const pairs = [...pairSet].sort((a, b) => a - b);
+          ambiguousByGeo[geoId] = {
+            geo_id: geoId,
+            dma: cellInfo.DMA || geoId,
+            cell_type: cellInfo.cell_type || '',
+            candidate_pairs: pairs.join('|'),
+            rows: 0
+          };
+        }
+        ambiguousByGeo[geoId].rows += 1;
+      }
 
       return {
         day:                row['day'] || '',
@@ -1241,6 +1468,27 @@ function processData() {
         pct_of_sales_cell:  cellInfo.pct_of_sales_cell || ''
       };
     });
+
+    window._pairQuality = {
+      salesRowCount: mergedRows.length,
+      matchedCellRowCount: matchedCount,
+      pairedRowCount: pairedCount,
+      noPairMatchCount,
+      ambiguousPairCount
+    };
+
+    const pq = window._pairQuality;
+    showBanner(
+      'info',
+      `Rows: ${pq.salesRowCount.toLocaleString()} · Paired: ${pq.pairedRowCount.toLocaleString()} · Unpaired: ${(pq.salesRowCount - pq.pairedRowCount).toLocaleString()} · ` +
+      `No matched-markets ID: ${pq.noPairMatchCount.toLocaleString()} · Ambiguous matched-markets ID: ${pq.ambiguousPairCount.toLocaleString()}`
+    );
+
+    window._pairDiagnostics = {
+      unmatched: Object.values(unmatchedByGeo).sort((a, b) => b.rows - a.rows || String(a.geo_id).localeCompare(String(b.geo_id))),
+      ambiguous: Object.values(ambiguousByGeo).sort((a, b) => b.rows - a.rows || String(a.geo_id).localeCompare(String(b.geo_id)))
+    };
+    renderPairDiagnostics();
 
 
 
@@ -1296,7 +1544,7 @@ function sortBy(idx, col) {
 
   filteredRows.sort((a, b) => {
     const av = a[col] || '', bv = b[col] || '';
-    const an = parseFloat(av), bn = parseFloat(bv);
+    const an = toNum(av), bn = toNum(bv);
     if (!isNaN(an) && !isNaN(bn)) return (an - bn) * sortDir;
     return av.localeCompare(bv) * sortDir;
   });
@@ -1318,7 +1566,7 @@ function renderTableBody() {
       // Highlight the new derived columns
       if (['period','cell','cell_type','pair'].includes(c)) return `<td class="highlight">${v}</td>`;
       // Format numbers
-      const n = parseFloat(v);
+      const n = toNum(v);
       if (!isNaN(n) && v !== '' && !['geo_id','location_id','target_variable_id','category_id'].includes(c)) {
         return `<td>${n.toLocaleString(undefined, {maximumFractionDigits: 2})}</td>`;
       }
@@ -1360,6 +1608,23 @@ function applyFilters() {
 
 // ── AA Summary pivot ──────────────────────────────────────────────────────────
 const customFactors = {}; // factorKey(seg, arm) -> overridden factor value (null = use computed)
+let summaryActiveCategory = '__combined__';
+
+function renderSummaryCategoryTabs(rows) {
+  const el = document.getElementById('summary-category-tabs');
+  if (!el) return;
+  const categories = distinctCategories(rows);
+  if (categories.length <= 1) { el.innerHTML = ''; return; }
+  el.innerHTML = `<button class="seg-tab${summaryActiveCategory === '__combined__' ? ' active' : ''}" onclick="selectSummaryCategory('__combined__', this)">All Categories</button>` +
+    categories.map(c => `<button class="seg-tab${c === summaryActiveCategory ? ' active' : ''}" onclick="selectSummaryCategory('${c.replace(/'/g, "\\'")}', this)">${c}</button>`).join('');
+}
+
+function selectSummaryCategory(cat, btn) {
+  document.querySelectorAll('#summary-category-tabs .seg-tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  summaryActiveCategory = cat;
+  renderAASummary(window._geoRows);
+}
 
 function adjustFactor(key, delta) {
   const current = customFactors[key] !== undefined ? customFactors[key] : window._computedFactors?.[key];
@@ -1383,10 +1648,15 @@ function commitFactorInput(key) {
 }
 
 function renderAASummary(rows) {
+  renderSummaryCategoryTabs(rows);
+  const catRows = summaryActiveCategory === '__combined__'
+    ? rows
+    : rows.filter(r => (r.category_nm || '(unknown)') === summaryActiveCategory);
+
   // Filter out excluded pairs
   const filtered = excludedPairs.size > 0
-    ? rows.filter(r => !excludedPairs.has(String(r.pair)))
-    : rows;
+    ? catRows.filter(r => !excludedPairs.has(String(r.pair)))
+    : catRows;
 
   // Get all unique segments dynamically
   const segments = [...new Set(filtered.map(r => r.target_variable_nm || '(unknown)'))].sort();
@@ -1402,7 +1672,7 @@ function renderAASummary(rows) {
     const seg = r.target_variable_nm || '(unknown)';
     const key = `${seg}||${ct}||${r.period}`;
     if (!agg[key]) agg[key] = 0;
-    agg[key] += parseFloat(r.orders) || 0;
+    agg[key] += toNum(r.orders);
   });
 
   const get = (seg, ct, period) => agg[`${seg}||${ct}||${period}`] || 0;
@@ -1539,8 +1809,8 @@ function renderWindowLift(filtered, segments) {
   const effOf = r => {
     if (r.period === 'AA' || r.period === 'AB') return r.period;
     if (window._expEnd) {
-      const d = new Date(r.day + 'T00:00:00');
-      if (!isNaN(d) && d > window._expEnd && (!window._acEnd || d <= window._acEnd)) return 'AC';
+      const d = parseDateLoose(r.day);
+      if (d && d > window._expEnd && (!window._acEnd || d <= window._acEnd)) return 'AC';
     }
     return 'DNU';
   };
@@ -1558,7 +1828,7 @@ function renderWindowLift(filtered, segments) {
     if (eff === 'AC') anyAC = true;
     const seg = r.target_variable_nm || '(unknown)';
     const k = `${seg}||${ct}||${eff}`;
-    agg[k] = (agg[k] || 0) + (parseFloat(r.orders) || 0);
+    agg[k] = (agg[k] || 0) + toNum(r.orders);
   });
   const gg = (seg, ct, p) => agg[`${seg}||${ct}||${p}`] || 0;
   const factorOf = (seg, arm) => {
@@ -1636,37 +1906,143 @@ function renderWindowLift(filtered, segments) {
 let geoSegments = [];
 let geoActiveSegment = null;
 
+function summarizeDMAList(setObj) {
+  const list = [...setObj].filter(Boolean);
+  if (!list.length) return '—';
+  if (list.length <= 2) return list.join(' | ');
+  return `${list.slice(0, 2).join(' | ')} +${list.length - 2}`;
+}
+
+function computeGeoLiftModel(rows, opts = {}) {
+  const bType = baselineType();
+  const arms  = armTypes();
+  const factorSegment = opts.factorSegment || null;
+
+  const pairBuckets = {};
+  const unmatched = { cells: {} };
+
+  const addCell = (bucket, ct) => {
+    if (!bucket.cells[ct]) bucket.cells[ct] = { aa: 0, ab: 0, dmas: new Set(), geos: new Set() };
+    return bucket.cells[ct];
+  };
+
+  rows.forEach(r => {
+    if (r.period !== 'AA' && r.period !== 'AB') return;
+    const ct = r.cell_type || '';
+    if (!isAnalyzedType(ct)) return;
+
+    const pair = String(r.pair || '').trim();
+    if (pair && !pairBuckets[pair]) pairBuckets[pair] = { cells: {} };
+    const cell = addCell(pair ? pairBuckets[pair] : unmatched, ct);
+
+    const n = toNum(r.orders);
+    if (r.period === 'AA') cell.aa += n;
+    if (r.period === 'AB') cell.ab += n;
+    cell.dmas.add(r.DMA || r.geo_id || '');
+    cell.geos.add(r.geo_id || '');
+  });
+
+  const sortedPairs = Object.keys(pairBuckets).sort((a, b) => {
+    const an = parseInt(a, 10), bn = parseInt(b, 10);
+    return isNaN(an) || isNaN(bn) ? a.localeCompare(b) : (an - bn || a.localeCompare(b));
+  });
+
+  const rowsOut = [];
+  let baseTotalAA = 0;
+  let baseTotalAB = 0;
+  const armTotals = {};
+  arms.forEach(a => armTotals[a] = { aa: 0, ab: 0, liftNum: 0, liftDen: 0 });
+  let unmatchedGeoCount = 0;
+  let pairsWithoutBaseline = 0;
+
+  sortedPairs.forEach((pair, i) => {
+    const cells = pairBuckets[pair].cells;
+    const base = cells[bType] || null;
+    const baseAA = base ? base.aa : 0;
+    const baseAB = base ? base.ab : 0;
+    const sep = i > 0;
+
+    if (!base) pairsWithoutBaseline++;
+    if (base) {
+      baseTotalAA += baseAA;
+      baseTotalAB += baseAB;
+      rowsOut.push({
+        pair,
+        sep,
+        cellType: bType,
+        dmaText: summarizeDMAList(base.dmas),
+        aa: baseAA,
+        factor: null,
+        ab: baseAB,
+        liftPct: null,
+        lift: null
+      });
+    }
+
+    arms.forEach(arm => {
+      const armCell = cells[arm];
+      if (!armCell) return;
+
+      const key = factorSegment ? factorKey(factorSegment, arm) : null;
+      const override = key && customFactors[key] !== undefined ? customFactors[key] : null;
+      const computed = baseAA > 0 ? (armCell.aa / baseAA) : null;
+      const factor = override !== null ? override : computed;
+      const factoredBaseAB = (factor !== null && base) ? baseAB * factor : null;
+      const lift = factoredBaseAB !== null ? armCell.ab - factoredBaseAB : null;
+      const liftPct = lift !== null && factoredBaseAB > 0 ? (lift / factoredBaseAB) * 100 : null;
+
+      if (factoredBaseAB !== null) {
+        armTotals[arm].aa += armCell.aa;
+        armTotals[arm].ab += armCell.ab;
+        armTotals[arm].liftNum += lift;
+        armTotals[arm].liftDen += factoredBaseAB;
+      }
+
+      rowsOut.push({
+        pair,
+        sep: !base && sep,
+        cellType: arm,
+        dmaText: summarizeDMAList(armCell.dmas),
+        aa: armCell.aa,
+        factor,
+        ab: armCell.ab,
+        liftPct,
+        lift
+      });
+    });
+  });
+
+  const unmatchedRows = [];
+  [bType, ...arms].forEach(ct => {
+    const cell = unmatched.cells[ct];
+    if (!cell) return;
+    unmatchedGeoCount += cell.geos.size;
+    unmatchedRows.push({
+      pair: 'unmatched',
+      sep: false,
+      cellType: ct,
+      dmaText: summarizeDMAList(cell.dmas),
+      aa: cell.aa,
+      factor: null,
+      ab: cell.ab,
+      liftPct: null,
+      lift: null
+    });
+  });
+
+  return { rowsOut, unmatchedRows, baseTotalAA, baseTotalAB, armTotals, unmatchedGeoCount, pairsWithoutBaseline };
+}
+
 // Shared renderer for both the Combined (all segments) and per-segment Geo Lift
 // views — `rows` is pre-filtered to the relevant segment(s) by the caller.
 function renderGeoRows(rows) {
   const bType = baselineType();
   const arms  = armTypes();
+  const factorSegment = geoActiveSegment && geoActiveSegment !== '__combined__' ? geoActiveSegment : null;
+  const model = computeGeoLiftModel(rows, { factorSegment });
 
-  const agg = {}, meta = {};
-  rows.forEach(r => {
-    if (r.period !== 'AA' && r.period !== 'AB') return;
-    const ct = r.cell_type || '';
-    if (!isAnalyzedType(ct)) return;
-    const key = `${r.geo_id}||${ct}||${r.period}`;
-    if (!agg[key]) agg[key] = 0;
-    agg[key] += parseFloat(r.orders) || 0;
-    if (!meta[r.geo_id]) meta[r.geo_id] = { DMA: r.DMA || r.geo_id, pair: r.pair || '', cell_type: ct };
-  });
-
-  const getG = (gid, ct, p) => agg[`${gid}||${ct}||${p}`] || 0;
   const fmtN = n => n === null || n === undefined ? '—' : n.toLocaleString(undefined, {maximumFractionDigits: 0});
   const fmtP = n => n === null || n === undefined ? '—' : (n >= 0 ? '+' : '') + n.toFixed(1) + '%';
-
-  const pairs = {};
-  Object.keys(meta).forEach(gid => {
-    const p = meta[gid].pair || '—';
-    if (!pairs[p]) pairs[p] = {};
-    pairs[p][meta[gid].cell_type] = gid;
-  });
-  const sortedPairs = Object.keys(pairs).sort((a, b) => {
-    const an = parseInt(a), bn = parseInt(b);
-    return isNaN(an) || isNaN(bn) ? a.localeCompare(b) : (an - bn || a.localeCompare(b));
-  });
 
   document.getElementById('geo-head').innerHTML = `
     <tr>
@@ -1676,70 +2052,49 @@ function renderGeoRows(rows) {
     </tr>`;
 
   let html = '';
-  let baseTotalAA = 0, baseTotalAB = 0;
-  const armTotals = {};
-  arms.forEach(a => armTotals[a] = { aa: 0, ab: 0, liftNum: 0, liftDen: 0 });
+  model.rowsOut.forEach((r, i) => {
+    const sepClass = r.sep ? ' geo-pair-sep' : '';
+    const fClass = r.factor !== null ? (r.factor >= 1 ? 'green' : 'warn') : '';
+    const lc = r.lift !== null ? (r.lift >= 0 ? 'td-lift-pos' : 'td-lift-neg') : '';
+    const showPair = i === 0 || model.rowsOut[i - 1].pair !== r.pair;
+    html += `<tr class="${sepClass}">
+      <td>${showPair ? r.pair : ''}</td>
+      <td><span class="tag ${tagClassFor(r.cellType)}">${r.cellType}</span></td>
+      <td style="color:var(--text)">${r.dmaText}</td>
+      <td>${fmtN(r.aa)}</td>
+      <td class="td-factor">${r.factor !== null ? `<span class="stat-val ${fClass}" style="font-size:.85rem">${r.factor.toFixed(4)}</span>` : '<span class="null-cell">—</span>'}</td>
+      <td>${fmtN(r.ab)}</td>
+      <td class="td-factor"><span class="${lc}">${r.liftPct !== null ? fmtP(r.liftPct) : '—'}</span></td>
+      <td class="td-factor" style="border-right:none"><span class="${lc}">${r.lift !== null ? (r.lift >= 0 ? '+' : '') + fmtN(r.lift) : '—'}</span></td>
+    </tr>`;
+  });
 
-  sortedPairs.forEach((p, pi) => {
-    const baseGid = pairs[p][bType];
-    const baseAA  = baseGid ? getG(baseGid, bType, 'AA') : 0;
-    const baseAB  = baseGid ? getG(baseGid, bType, 'AB') : 0;
-    const sepClass = pi > 0 ? ' geo-pair-sep' : '';
-    let firstInPair = true;
-
-    if (baseGid) {
-      baseTotalAA += baseAA; baseTotalAB += baseAB;
-      html += `<tr class="${sepClass}">
-        <td>${p}</td>
-        <td><span class="tag ${tagClassFor(bType)}">${bType}</span></td>
-        <td style="color:var(--text)">${meta[baseGid].DMA}</td>
-        <td>${fmtN(baseAA)}</td>
+  if (model.unmatchedRows.length) {
+    html += `<tr class="geo-pair-sep"><td colspan="8" style="font-family:var(--mono);font-size:.68rem;color:var(--warn);background:rgba(245,158,11,.08);">Unmatched geos (excluded from lift math)</td></tr>`;
+    model.unmatchedRows.forEach(r => {
+      html += `<tr>
+        <td>—</td>
+        <td><span class="tag ${tagClassFor(r.cellType)}">${r.cellType}</span></td>
+        <td style="color:var(--text)">${r.dmaText}</td>
+        <td>${fmtN(r.aa)}</td>
         <td class="td-factor null-cell">—</td>
-        <td>${fmtN(baseAB)}</td>
+        <td>${fmtN(r.ab)}</td>
         <td class="td-factor null-cell">—</td>
         <td class="td-factor null-cell" style="border-right:none">—</td>
       </tr>`;
-      firstInPair = false;
-    }
-
-    arms.forEach(arm => {
-      const armGid = pairs[p][arm];
-      if (!armGid) return;
-      const rawAA = getG(armGid, arm, 'AA'), rawAB = getG(armGid, arm, 'AB');
-      const factor  = baseAA > 0 ? rawAA / baseAA : null;
-      const fClass  = factor !== null ? (factor >= 1 ? 'green' : 'warn') : '';
-      const factoredBaseAB = factor !== null ? baseAB * factor : null;
-      const lift    = factoredBaseAB !== null ? rawAB - factoredBaseAB : null;
-      const liftPct = lift !== null && factoredBaseAB > 0 ? (lift / factoredBaseAB) * 100 : null;
-      const lc      = lift !== null ? (lift >= 0 ? 'td-lift-pos' : 'td-lift-neg') : '';
-
-      armTotals[arm].aa += rawAA; armTotals[arm].ab += rawAB;
-      if (factoredBaseAB !== null) { armTotals[arm].liftNum += (rawAB - factoredBaseAB); armTotals[arm].liftDen += factoredBaseAB; }
-
-      html += `<tr class="${firstInPair ? sepClass : ''}">
-        <td>${firstInPair ? p : ''}</td>
-        <td><span class="tag ${tagClassFor(arm)}">${arm}</span></td>
-        <td style="color:var(--text)">${meta[armGid].DMA}</td>
-        <td>${fmtN(rawAA)}</td>
-        <td class="td-factor"><span class="stat-val ${fClass}" style="font-size:.85rem">${factor !== null ? factor.toFixed(4) : '—'}</span></td>
-        <td>${fmtN(rawAB)}</td>
-        <td class="td-factor"><span class="${lc}">${liftPct !== null ? fmtP(liftPct) : '—'}</span></td>
-        <td class="td-factor" style="border-right:none"><span class="${lc}">${lift !== null ? (lift >= 0 ? '+' : '') + fmtN(lift) : '—'}</span></td>
-      </tr>`;
-      firstInPair = false;
     });
-  });
+  }
 
   // Totals rows: baseline (raw) + one per arm
   html += `
     <tr style="border-top:3px solid var(--border2);background:rgba(20,184,166,.03);">
       <td style="font-family:var(--mono);font-size:.68rem;font-weight:600;color:var(--accent);">Total</td>
       <td><span class="tag ${tagClassFor(bType)}">${bType}</span></td><td></td>
-      <td>${fmtN(baseTotalAA)}</td><td class="td-factor">—</td><td>${fmtN(baseTotalAB)}</td>
+      <td>${fmtN(model.baseTotalAA)}</td><td class="td-factor">—</td><td>${fmtN(model.baseTotalAB)}</td>
       <td class="td-factor">—</td><td class="td-factor" style="border-right:none">—</td>
     </tr>`;
   arms.forEach(arm => {
-    const t = armTotals[arm];
+    const t = model.armTotals[arm];
     const tLift    = t.liftDen > 0 ? t.liftNum : null;
     const tLiftPct = tLift !== null && t.liftDen > 0 ? (tLift / t.liftDen) * 100 : null;
     const tlc      = tLift !== null ? (tLift >= 0 ? 'td-lift-pos' : 'td-lift-neg') : '';
@@ -1753,17 +2108,53 @@ function renderGeoRows(rows) {
   });
 
   document.getElementById('geo-body').innerHTML = html;
+
+  const foot = document.getElementById('geo-footnote');
+  if (foot) {
+    const parts = [
+      'Geo lift is computed from pair-level AA factors (or per-segment custom override when a single segment is selected)',
+      'unmatched geos are shown separately and excluded from lift math'
+    ];
+    if (model.unmatchedGeoCount > 0) parts.push(`${model.unmatchedGeoCount.toLocaleString()} unmatched geo rows`);
+    if (model.pairsWithoutBaseline > 0) parts.push(`${model.pairsWithoutBaseline.toLocaleString()} pair(s) missing baseline`);
+    if (window._pairQuality?.ambiguousPairCount > 0) parts.push(`${window._pairQuality.ambiguousPairCount.toLocaleString()} row(s) had ambiguous pair mapping and were treated as unmatched`);
+    foot.textContent = parts.join(' · ');
+  }
 }
 
-function renderGeoTotals(rows) {
-  geoSegments = [...new Set(rows.map(r => r.target_variable_nm || '(unknown)'))].sort();
-  geoActiveSegment = geoSegments[0] || null;
-  renderGeoRows(rows);
+let geoActiveCategory = '__combined__';
+
+function geoApplyFilters(rows) {
+  let r = applyPairExclusions(rows);
+  if (geoActiveSegment && geoActiveSegment !== '__combined__') {
+    r = r.filter(x => (x.target_variable_nm || '(unknown)') === geoActiveSegment);
+  }
+  if (geoActiveCategory && geoActiveCategory !== '__combined__') {
+    r = r.filter(x => (x.category_nm || '(unknown)') === geoActiveCategory);
+  }
+  return r;
+}
+
+function renderGeoCategoryTabs(rows) {
+  const el = document.getElementById('geo-category-tabs');
+  if (!el) return;
+  const categories = distinctCategories(rows);
+  if (categories.length <= 1) { el.innerHTML = ''; return; }
+  el.innerHTML = `<button class="seg-tab${geoActiveCategory === '__combined__' ? ' active' : ''}" onclick="selectGeoCategory('__combined__', this)">All Categories</button>` +
+    categories.map(c => `<button class="seg-tab${c === geoActiveCategory ? ' active' : ''}" onclick="selectGeoCategory('${c.replace(/'/g, "\\'")}', this)">${c}</button>`).join('');
+}
+
+function selectGeoCategory(cat, btn) {
+  document.querySelectorAll('#geo-category-tabs .seg-tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  geoActiveCategory = cat;
+  renderGeoRows(geoApplyFilters(window._geoRows));
 }
 
 function renderGeoTable(rows) {
   geoSegments = [...new Set(rows.map(r => r.target_variable_nm || '(unknown)'))].sort();
-  geoActiveSegment = geoSegments[0] || null;
+  geoActiveSegment = '__combined__';
+  geoActiveCategory = '__combined__';
 
   // Build tabs — Combined first, then per-segment
   document.getElementById('geo-segment-tabs').innerHTML =
@@ -1772,38 +2163,55 @@ function renderGeoTable(rows) {
       `<button class="seg-tab" onclick="selectGeoSegment('${seg.replace(/'/g,"\\'")}', this)">${seg}</button>`
     ).join('');
 
-  renderGeoTotals(rows);
+  renderGeoCategoryTabs(rows);
+  renderGeoRows(geoApplyFilters(rows));
 }
 
 function selectGeoSegment(seg, btn) {
   document.querySelectorAll('#geo-segment-tabs .seg-tab').forEach(t => t.classList.remove('active'));
   btn.classList.add('active');
-  if (seg === '__combined__') {
-    renderGeoTotals(window._geoRows);
-  } else {
-    renderGeoSegment(window._geoRows, seg);
-  }
-}
-
-function renderGeoSegment(rows, seg) {
-  renderGeoRows(rows.filter(r => (r.target_variable_nm || '(unknown)') === seg));
+  geoActiveSegment = seg;
+  renderGeoRows(geoApplyFilters(window._geoRows));
 }
 
 // ── Daily Cumulative Factor ───────────────────────────────────────────────────
+let dailyActiveSegment = null;
+let dailyActiveCategory = '__combined__';
+
 function renderDailyFactor(rows) {
   const segments = [...new Set(rows.map(r => r.target_variable_nm || '(unknown)'))].sort();
   window._dailyRows = rows;
+  dailyActiveCategory = '__combined__';
 
   document.getElementById('daily-segment-tabs').innerHTML = segments.map((seg, i) =>
     `<button class="seg-tab${i === 0 ? ' active' : ''}" onclick="selectDailySegment('${seg.replace(/'/g,"\\'")}', this)">${seg}</button>`
   ).join('');
 
-  renderDailySegment(rows, segments[0] || null);
+  renderDailyCategoryTabs(rows);
+  dailyActiveSegment = segments[0] || null;
+  renderDailySegment(rows, dailyActiveSegment);
+}
+
+function renderDailyCategoryTabs(rows) {
+  const el = document.getElementById('daily-category-tabs');
+  if (!el) return;
+  const categories = distinctCategories(rows);
+  if (categories.length <= 1) { el.innerHTML = ''; return; }
+  el.innerHTML = `<button class="seg-tab${dailyActiveCategory === '__combined__' ? ' active' : ''}" onclick="selectDailyCategory('__combined__', this)">All Categories</button>` +
+    categories.map(c => `<button class="seg-tab${c === dailyActiveCategory ? ' active' : ''}" onclick="selectDailyCategory('${c.replace(/'/g, "\\'")}', this)">${c}</button>`).join('');
+}
+
+function selectDailyCategory(cat, btn) {
+  document.querySelectorAll('#daily-category-tabs .seg-tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  dailyActiveCategory = cat;
+  renderDailySegment(window._dailyRows, dailyActiveSegment);
 }
 
 function selectDailySegment(seg, btn) {
   document.querySelectorAll('#daily-segment-tabs .seg-tab').forEach(t => t.classList.remove('active'));
   btn.classList.add('active');
+  dailyActiveSegment = seg;
   renderDailySegment(window._dailyRows, seg);
 }
 
@@ -1817,7 +2225,8 @@ function renderDailySegment(rows, seg) {
   const filtered = rows.filter(r =>
     (r.target_variable_nm || '(unknown)') === seg &&
     (r.period === 'AA' || r.period === 'AB') &&
-    isAnalyzedType(r.cell_type)
+    isAnalyzedType(r.cell_type) &&
+    (dailyActiveCategory === '__combined__' || (r.category_nm || '(unknown)') === dailyActiveCategory)
   );
 
   // Get sorted unique days, grouped by period
@@ -1836,14 +2245,14 @@ function renderDailySegment(rows, seg) {
   filtered.forEach(r => {
     const key = `${r.geo_id}||${r.day}`;
     if (!byGeoDay[key]) byGeoDay[key] = 0;
-    byGeoDay[key] += parseFloat(r.orders) || 0;
+    byGeoDay[key] += toNum(r.orders);
   });
 
   // Aggregate per-type totals per day (for the cumulative factor rows)
   const dayTotals = {}; // day -> { [cell_type]: sum }
   filtered.forEach(r => {
     if (!dayTotals[r.day]) dayTotals[r.day] = {};
-    dayTotals[r.day][r.cell_type] = (dayTotals[r.day][r.cell_type] || 0) + (parseFloat(r.orders) || 0);
+    dayTotals[r.day][r.cell_type] = (dayTotals[r.day][r.cell_type] || 0) + toNum(r.orders);
   });
 
   // Compute cumulative factor per day per arm, resetting at AA start and AB start
@@ -1885,7 +2294,8 @@ function renderDailySegment(rows, seg) {
   const firstAbDay = abDays[0];
   const dateCols = allDays.map((day, i) => {
     const isAbStart = day === firstAbDay;
-    const label = new Date(day + 'T00:00:00').toLocaleDateString('en-US', {month:'numeric', day:'numeric', year:'2-digit'});
+    const parsed = parseDateLoose(day);
+    const label = parsed ? parsed.toLocaleDateString('en-US', {month:'numeric', day:'numeric', year:'2-digit'}) : day;
     return `<th style="${isAbStart ? 'border-left:3px solid var(--accent);' : ''}text-align:center;min-width:64px;">${label}</th>`;
   }).join('');
 
@@ -1978,6 +2388,7 @@ let cumActiveSegment = '__combined__';
 let cumActiveArm = null; // one arm at a time — overlaying 3+ lines would be unreadable
 let cumTopMode = 'lift'; // controls section A: 'lift' = cumulative lift · 'daily' = aggregate (non-cumulative) lift
 let cumRollWindow = 7;  // trailing-day window for rolling lift
+let cumActiveCategory = '__combined__';
 
 function renderCumLift(rows) {
   window._cumRows = rows;
@@ -1986,6 +2397,7 @@ function renderCumLift(rows) {
   cumActiveSegment = '__combined__';
   cumActiveArm = arms[0] || null;
   cumTopMode = 'lift';
+  cumActiveCategory = '__combined__';
 
   document.getElementById('cumlift-arm-tabs').innerHTML = arms.map((arm, i) =>
     `<button class="seg-tab${i === 0 ? ' active' : ''}" onclick="selectCumArm('${arm.replace(/'/g,"\\'")}', this)">${arm}</button>`
@@ -1997,6 +2409,24 @@ function renderCumLift(rows) {
       `<button class="seg-tab" onclick="selectCumSegment('${seg.replace(/'/g,"\\'")}', this)">${seg}</button>`
     ).join('');
 
+  renderCumCategoryTabs(rows);
+
+  renderCumView();
+}
+
+function renderCumCategoryTabs(rows) {
+  const el = document.getElementById('cumlift-category-tabs');
+  if (!el) return;
+  const categories = distinctCategories(rows);
+  if (categories.length <= 1) { el.innerHTML = ''; return; }
+  el.innerHTML = `<button class="seg-tab${cumActiveCategory === '__combined__' ? ' active' : ''}" onclick="selectCumCategory('__combined__', this)">All Categories</button>` +
+    categories.map(c => `<button class="seg-tab${c === cumActiveCategory ? ' active' : ''}" onclick="selectCumCategory('${c.replace(/'/g, "\\'")}', this)">${c}</button>`).join('');
+}
+
+function selectCumCategory(cat, btn) {
+  document.querySelectorAll('#cumlift-category-tabs .seg-tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  cumActiveCategory = cat;
   renderCumView();
 }
 
@@ -2091,8 +2521,8 @@ function buildCumSeries(rows, seg, arm) {
   const effPeriod = r => {
     if (r.period === 'AA' || r.period === 'AB') return r.period;
     if (window._expEnd) {
-      const d = new Date(r.day + 'T00:00:00');
-      if (!isNaN(d) && d > window._expEnd && (!window._acEnd || d <= window._acEnd)) return 'AC';
+      const d = parseDateLoose(r.day);
+      if (d && d > window._expEnd && (!window._acEnd || d <= window._acEnd)) return 'AC';
     }
     return 'DNU';
   };
@@ -2122,7 +2552,7 @@ function buildCumSeries(rows, seg, arm) {
   let rawAAarm = 0, rawAAbase = 0;
   filtered.forEach(r => {
     const d = perDay[r.day]; if (!d) return;
-    const o = parseFloat(r.orders) || 0;
+    const o = toNum(r.orders);
     if (r.cell_type === arm) {
       d.treated += o;
       if (r._eff === 'AA') rawAAarm += o;
@@ -2179,11 +2609,16 @@ function fmtCompact(n) {
 }
 function fmtFull(n) { return Math.round(n).toLocaleString(); }
 function fmtDayShort(day) {
-  return new Date(day + 'T00:00:00').toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: '2-digit' });
+  const d = parseDateLoose(day);
+  if (!d) return String(day || '');
+  return d.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: '2-digit' });
 }
 
 function renderCumView() {
-  const rows = window._cumRows || [];
+  let rows = window._cumRows || [];
+  if (cumActiveCategory !== '__combined__') {
+    rows = rows.filter(r => (r.category_nm || '(unknown)') === cumActiveCategory);
+  }
   if (!cumActiveArm) return;
   const data = buildCumSeries(rows, cumActiveSegment, cumActiveArm);
   const s = data.series;
@@ -2483,24 +2918,22 @@ function wireCumHover(data, mode, prefix) {
 }
 
 // ── Excel Export ──────────────────────────────────────────────────────────────
-function exportExcel() {
-  if (typeof XLSX === 'undefined') {
-    showBanner('warn', 'Loading export library, please try again in a moment…');
-    const s = document.createElement('script');
-    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
-    s.onload = () => { showBanner(''); exportExcel(); };
-    document.head.appendChild(s);
-    return;
+// Sheet names must be <=31 chars and unique; truncate and de-dupe centrally so
+// every sheet-adding call site (summary/geo/daily, combined and per-category) stays simple.
+function addUniqueSheet(wb, wsName, aoa) {
+  let name = wsName.substring(0, 31);
+  const existing = new Set(wb.SheetNames);
+  let i = 2;
+  while (existing.has(name)) {
+    const suffix = ` (${i})`;
+    name = wsName.substring(0, 31 - suffix.length) + suffix;
+    i++;
   }
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), name);
+}
 
-  const wb = XLSX.utils.book_new();
-  const rows = window._geoRows || [];
+function buildSummarySheet(wb, rows, labelSuffix, bType, arms, cellTypes) {
   const segments = [...new Set(rows.map(r => r.target_variable_nm || '(unknown)'))].sort();
-  const bType = baselineType();
-  const arms  = armTypes();
-  const cellTypes = [bType, ...arms];
-
-  // ── Sheet 1: Summary Stats ──────────────────────────────────────────────────
   const filtered = excludedPairs.size > 0 ? rows.filter(r => !excludedPairs.has(String(r.pair))) : rows;
   const agg = {};
   filtered.forEach(r => {
@@ -2510,9 +2943,18 @@ function exportExcel() {
     const seg = r.target_variable_nm || '(unknown)';
     const key = `${seg}||${ct}||${r.period}`;
     if (!agg[key]) agg[key] = 0;
-    agg[key] += parseFloat(r.orders) || 0;
+    agg[key] += toNum(r.orders);
   });
   const gagg = (seg, ct, period) => agg[`${seg}||${ct}||${period}`] || 0;
+
+  const computedFactors = {};
+  segments.forEach(seg => {
+    const baseAA = gagg(seg, bType, 'AA');
+    arms.forEach(arm => {
+      const armAA = gagg(seg, arm, 'AA');
+      computedFactors[factorKey(seg, arm)] = baseAA > 0 ? armAA / baseAA : null;
+    });
+  });
 
   const summaryData = [];
   const hdr = ['Cell Type'];
@@ -2525,10 +2967,10 @@ function exportExcel() {
     const row = [ct];
     segments.forEach(seg => {
       const key = factorKey(seg, ct);
-      const f = isArm ? (customFactors[key] !== undefined ? customFactors[key] : (window._computedFactors?.[key] ?? null)) : null;
+      const f = isArm ? (customFactors[key] !== undefined ? customFactors[key] : computedFactors[key]) : null;
       const rawAA = gagg(seg, ct, 'AA'), rawAB = gagg(seg, ct, 'AB');
       const baseAB = gagg(seg, bType, 'AB');
-      const factoredBaseAB = isArm && f ? baseAB * f : null;
+      const factoredBaseAB = isArm && f !== null && f !== undefined ? baseAB * f : null;
       const lift = isArm && factoredBaseAB !== null ? rawAB - factoredBaseAB : null;
       const liftPct = lift !== null && factoredBaseAB > 0 ? lift / factoredBaseAB : null;
       row.push(Math.round(rawAA), Math.round(rawAB), isArm ? (f || '') : '', lift !== null ? Math.round(lift) : '', liftPct !== null ? parseFloat((liftPct*100).toFixed(2)) : '');
@@ -2539,8 +2981,8 @@ function exportExcel() {
     if (isArm) {
       const tFBaseAB = segments.reduce((s, seg) => {
         const key = factorKey(seg, ct);
-        const f = customFactors[key] !== undefined ? customFactors[key] : window._computedFactors?.[key];
-        return s + (f ? gagg(seg, bType, 'AB') * f : 0);
+        const f = customFactors[key] !== undefined ? customFactors[key] : computedFactors[key];
+        return s + (f !== null && f !== undefined ? gagg(seg, bType, 'AB') * f : 0);
       }, 0);
       const tLift = tFBaseAB > 0 ? tAB - tFBaseAB : null;
       const tLiftPct = tLift !== null && tFBaseAB > 0 ? tLift / tFBaseAB : null;
@@ -2550,63 +2992,58 @@ function exportExcel() {
     }
     summaryData.push(row);
   });
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(summaryData), 'Summary Stats');
+  addUniqueSheet(wb, `Summary Stats${labelSuffix}`, summaryData);
+}
 
-  // ── Sheet per segment: Geo Lift (baseline + all arms stacked as rows) ────────
+function buildGeoSheets(wb, rows, labelSuffix, bType, arms) {
+  const segments = [...new Set(rows.map(r => r.target_variable_nm || '(unknown)'))].sort();
   segments.forEach(seg => {
+    const segRows = rows.filter(r => (r.target_variable_nm || '(unknown)') === seg);
+    const model = computeGeoLiftModel(segRows, { factorSegment: seg });
     const geoData = [['Pair','Cell','DMA','AA','Factor Value','AB','Lift %','Lift']];
-    const gagg2 = {}, gmeta = {};
-    rows.forEach(r => {
-      if ((r.target_variable_nm||'(unknown)') !== seg) return;
-      if (r.period !== 'AA' && r.period !== 'AB') return;
-      const ct = r.cell_type||''; if (!isAnalyzedType(ct)) return;
-      const key = `${r.geo_id}||${ct}||${r.period}`;
-      if (!gagg2[key]) gagg2[key] = 0;
-      gagg2[key] += parseFloat(r.orders)||0;
-      if (!gmeta[r.geo_id]) gmeta[r.geo_id] = { DMA: r.DMA||r.geo_id, pair: r.pair||'', cell_type: ct };
+
+    model.rowsOut.forEach(r => {
+      geoData.push([
+        r.pair,
+        r.cellType,
+        r.dmaText,
+        Math.round(r.aa || 0),
+        r.factor !== null ? parseFloat(r.factor.toFixed(4)) : '',
+        Math.round(r.ab || 0),
+        r.liftPct !== null ? parseFloat((r.liftPct * 100).toFixed(2)) : '',
+        r.lift !== null ? Math.round(r.lift) : ''
+      ]);
     });
-    const getG2 = (gid, ct, p) => gagg2[`${gid}||${ct}||${p}`]||0;
-    const gpairs = {};
-    Object.keys(gmeta).forEach(gid => { const p=gmeta[gid].pair||'—'; if(!gpairs[p])gpairs[p]={}; gpairs[p][gmeta[gid].cell_type]=gid; });
-    const sp = Object.keys(gpairs).sort((a,b) => {
-      const an = parseInt(a), bn = parseInt(b);
-      return isNaN(an) || isNaN(bn) ? a.localeCompare(b) : (an - bn || a.localeCompare(b));
-    });
-    let tBaseAA = 0, tBaseAB = 0;
-    const tArm = {}; arms.forEach(a => tArm[a] = { aa: 0, ab: 0, liftNum: 0, liftDen: 0 });
-    sp.forEach(p => {
-      const baseGid = gpairs[p][bType];
-      const baseAA = baseGid ? getG2(baseGid, bType, 'AA') : 0;
-      const baseAB = baseGid ? getG2(baseGid, bType, 'AB') : 0;
-      if (baseGid) {
-        tBaseAA += baseAA; tBaseAB += baseAB;
-        geoData.push([p, bType, gmeta[baseGid].DMA, Math.round(baseAA), '', Math.round(baseAB), '', '']);
-      }
-      arms.forEach(arm => {
-        const armGid = gpairs[p][arm]; if (!armGid) return;
-        const rawAA = getG2(armGid, arm, 'AA'), rawAB = getG2(armGid, arm, 'AB');
-        const factor = baseAA > 0 ? rawAA / baseAA : null;
-        const factoredBaseAB = factor !== null ? baseAB * factor : null;
-        const lift = factoredBaseAB !== null ? rawAB - factoredBaseAB : null;
-        const liftPct = lift !== null && factoredBaseAB > 0 ? parseFloat((lift/factoredBaseAB*100).toFixed(2)) : '';
-        tArm[arm].aa += rawAA; tArm[arm].ab += rawAB;
-        if (factoredBaseAB !== null) { tArm[arm].liftNum += lift; tArm[arm].liftDen += factoredBaseAB; }
-        geoData.push(['', arm, gmeta[armGid].DMA, Math.round(rawAA), factor !== null ? parseFloat(factor.toFixed(4)) : '', Math.round(rawAB), liftPct, lift !== null ? Math.round(lift) : '']);
+
+    if (model.unmatchedRows.length) {
+      geoData.push(['Unmatched geos (excluded from lift math)', '', '', '', '', '', '', '']);
+      model.unmatchedRows.forEach(r => {
+        geoData.push(['', r.cellType, r.dmaText, Math.round(r.aa || 0), '', Math.round(r.ab || 0), '', '']);
       });
-    });
-    // Totals rows
-    geoData.push(['Total', bType, '', Math.round(tBaseAA), '', Math.round(tBaseAB), '', '']);
+    }
+
+    geoData.push(['Total', bType, '', Math.round(model.baseTotalAA), '', Math.round(model.baseTotalAB), '', '']);
     arms.forEach(arm => {
-      const t = tArm[arm];
+      const t = model.armTotals[arm];
       const tL = t.liftDen > 0 ? Math.round(t.liftNum) : '';
-      const tLP = t.liftDen > 0 ? parseFloat((t.liftNum/t.liftDen*100).toFixed(2)) : '';
+      const tLP = t.liftDen > 0 ? parseFloat((t.liftNum / t.liftDen * 100).toFixed(2)) : '';
       geoData.push(['', arm, '', Math.round(t.aa), '', Math.round(t.ab), tLP, tL]);
     });
-    const sheetName = `Geo - ${seg}`.substring(0, 31);
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(geoData), sheetName);
-  });
 
-  // ── Sheet per segment: Daily Factor (baseline + all arms stacked as rows) ───
+    if (model.unmatchedGeoCount > 0 || model.pairsWithoutBaseline > 0) {
+      geoData.push([
+        'Notes',
+        model.unmatchedGeoCount > 0 ? `${model.unmatchedGeoCount} unmatched geo rows` : '',
+        model.pairsWithoutBaseline > 0 ? `${model.pairsWithoutBaseline} pair(s) missing baseline` : '',
+        '', '', '', '', ''
+      ]);
+    }
+    addUniqueSheet(wb, `Geo - ${seg}${labelSuffix}`, geoData);
+  });
+}
+
+function buildDailySheets(wb, rows, labelSuffix, bType, arms) {
+  const segments = [...new Set(rows.map(r => r.target_variable_nm || '(unknown)'))].sort();
   segments.forEach(seg => {
     const segRows = rows.filter(r => (r.target_variable_nm||'(unknown)')===seg && (r.period==='AA'||r.period==='AB') && isAnalyzedType(r.cell_type));
     const aaDays=[...new Set(segRows.filter(r=>r.period==='AA').map(r=>r.day))].sort();
@@ -2615,8 +3052,8 @@ function exportExcel() {
     const dayTotals={}, byGeoDay={}, geoMeta2={};
     segRows.forEach(r => {
       if(!dayTotals[r.day]) dayTotals[r.day]={};
-      dayTotals[r.day][r.cell_type]=(dayTotals[r.day][r.cell_type]||0)+(parseFloat(r.orders)||0);
-      const k=`${r.geo_id}||${r.day}`; if(!byGeoDay[k])byGeoDay[k]=0; byGeoDay[k]+=parseFloat(r.orders)||0;
+      dayTotals[r.day][r.cell_type]=(dayTotals[r.day][r.cell_type]||0)+toNum(r.orders);
+      const k=`${r.geo_id}||${r.day}`; if(!byGeoDay[k])byGeoDay[k]=0; byGeoDay[k]+=toNum(r.orders);
       if(!geoMeta2[r.geo_id]) geoMeta2[r.geo_id]={DMA:r.DMA||r.geo_id,pair:r.pair||'—',cell_type:r.cell_type};
     });
     const hdrRow=['Pair','Cell','DMA',...allDays];
@@ -2649,14 +3086,45 @@ function exportExcel() {
     sg2.forEach(gid=>{ const ct=geoMeta2[gid].cell_type; allDays.forEach(d=>{ const v=byGeoDay[`${gid}||${d}`]||0; totalByTypeDay2[ct][d]=(totalByTypeDay2[ct][d]||0)+v; }); });
     typeOrder.forEach((ct,i) => dailyData.push([i===0?'Total':'', ct, '', ...allDays.map(d=>totalByTypeDay2[ct][d]||0)]));
 
-    const sheetName2 = `Daily - ${seg}`.substring(0, 31);
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(dailyData), sheetName2);
+    addUniqueSheet(wb, `Daily - ${seg}${labelSuffix}`, dailyData);
+  });
+}
+
+function exportExcel() {
+  if (typeof XLSX === 'undefined') {
+    showBanner('warn', 'Loading export library, please try again in a moment…');
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    s.onload = () => { showBanner(''); exportExcel(); };
+    document.head.appendChild(s);
+    return;
+  }
+
+  const wb = XLSX.utils.book_new();
+  const allRows = window._geoRows || [];
+  const bType = baselineType();
+  const arms  = armTypes();
+  const cellTypes = [bType, ...arms];
+
+  // Build every sheet once for the full dataset ("" suffix) and again per
+  // category if the file actually has more than one — so a single-category
+  // upload exports exactly like before, with no empty/duplicate sheets.
+  const categories = distinctCategories(allRows);
+  const groups = categories.length > 1
+    ? [{ label: '', rows: allRows }, ...categories.map(c => ({ label: ` - ${c}`, rows: allRows.filter(r => (r.category_nm || '(unknown)') === c) }))]
+    : [{ label: '', rows: allRows }];
+
+  groups.forEach(({ label, rows }) => {
+    const scoped = applyPairExclusions(rows);
+    buildSummarySheet(wb, scoped, label, bType, arms, cellTypes);
+    buildGeoSheets(wb, scoped, label, bType, arms);
+    buildDailySheets(wb, scoped, label, bType, arms);
   });
 
   // ── Sheet: Full Dataset ──────────────────────────────────────────────────────
   if (mergedRows.length) {
     const dsData = [DISPLAY_COLS, ...mergedRows.map(r => DISPLAY_COLS.map(c => r[c] || ''))];
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(dsData), 'Full Dataset');
+    addUniqueSheet(wb, 'Full Dataset', dsData);
   }
 
   XLSX.writeFile(wb, 'demandgen_analysis.xlsx');
