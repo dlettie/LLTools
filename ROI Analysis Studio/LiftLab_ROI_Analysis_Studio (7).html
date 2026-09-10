@@ -6177,18 +6177,13 @@ return Plotly;
     const combinedTotals = new Map(distA.groupTotals);
     if (distB) for (const [group, value] of distB.groupTotals) combinedTotals.set(group, (combinedTotals.get(group) || 0) + value);
     const sortAsc = $("distIndexSort")?.value === "asc";
+    const primaryOutcome = outcomeOrder[0];
     const groupIndexScore = (group) => {
-      let best = 0;
-      let bestAbs = -1;
-      for (const outcome of outcomeOrder) {
-        const idxA = distA.indexFor(group, outcome);
-        if (Number.isFinite(idxA) && Math.abs(idxA) > bestAbs) { bestAbs = Math.abs(idxA); best = idxA; }
-        if (distB) {
-          const idxB = distB.indexFor(group, outcome);
-          if (Number.isFinite(idxB) && Math.abs(idxB) > bestAbs) { bestAbs = Math.abs(idxB); best = idxB; }
-        }
-      }
-      return best;
+      const idxA = distA.indexFor(group, primaryOutcome);
+      const idxB = distB ? distB.indexFor(group, primaryOutcome) : null;
+      if (Number.isFinite(idxA) && Number.isFinite(idxB)) return (idxA + idxB) / 2;
+      if (Number.isFinite(idxB)) return idxB;
+      return Number.isFinite(idxA) ? idxA : 0;
     };
     const byRevenue = [...combinedTotals.entries()].sort((a, b) => b[1] - a[1]).map(([group]) => group);
     const topByRevenue = new Set(byRevenue.slice(0, top));
