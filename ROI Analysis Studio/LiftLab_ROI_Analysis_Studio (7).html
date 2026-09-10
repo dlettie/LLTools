@@ -244,7 +244,7 @@
       <div class="grid two" style="margin-top:14px">
         <div class="card"><div class="card-head"><div><h3>Revenue by outcome</h3><div id="distBaselineSubtitle" class="subtle"></div></div></div><div id="distBaselineChart" class="chart"></div><div id="distBaselineTable" class="module-table"></div></div>
         <div class="card">
-          <div class="card-head"><div><h3>Index vs. average</h3><div class="subtle">Each group's outcome mix vs. the overall average mix (dotted line = average; bars show over/under-index).</div></div><label style="min-width:170px">Sort by index<select id="distIndexSort"><option value="desc" selected>Most skewed → least</option><option value="asc">Least skewed → most</option></select></label></div>
+          <div class="card-head"><div><h3>Index vs. average</h3><div class="subtle">Each group's outcome mix vs. the overall average mix (dotted line = average; bars show over/under-index).</div></div><label style="min-width:170px">Sort by index<select id="distIndexSort"><option value="desc" selected>Positive → negative</option><option value="asc">Negative → positive</option></select></label></div>
           <div class="grid two" id="distIndexChartsWrap">
             <div><div class="subtle" id="distIndexChartALabel"></div><div id="distIndexChart" class="chart tall"></div></div>
             <div id="distIndexChartBWrap" class="hidden"><div class="subtle" id="distIndexChartBLabel"></div><div id="distIndexChartB" class="chart tall"></div></div>
@@ -4787,6 +4787,7 @@ return Plotly;
     selectedSnapshotIds: new Set(),
     heroMetric: "iroas",
     executiveMetric: "revenue",
+    distOutcomeKey: null,
     exports: {},
     modelSort: { key: "revenue", direction: "desc" },
     performanceSeriesOrder: [],
@@ -6081,6 +6082,7 @@ return Plotly;
     const node = $(containerId);
     const chartHeight = Math.max(420, groups.length * 34 + 120);
     node.style.height = `${chartHeight}px`;
+    if (window.Plotly && node.data) Plotly.purge(node);
     plot(containerId, outcomeOrder.map((outcome) => ({
       type: "bar", orientation: "h", name: outcome,
       y: groups, x: groups.map((group) => dist.indexFor(group, outcome)),
@@ -6090,7 +6092,7 @@ return Plotly;
       height: chartHeight,
       margin: { l: 200, r: 30, t: 20, b: 40 }, barmode: "group", bargap: 0.35, bargroupgap: 0.15,
       xaxis: { title: "Share vs. average (percentage points, 0 = average mix)", zeroline: true, zerolinewidth: 2, zerolinecolor: "#6f8893" },
-      yaxis: { autorange: "reversed" },
+      yaxis: { autorange: "reversed", categoryorder: "array", categoryarray: groups },
       shapes: [{ type: "line", x0: 0, x1: 0, xref: "x", yref: "paper", y0: 0, y1: 1, line: { color: "#6f8893", width: 2, dash: "dot" } }],
       legend: { orientation: "h", y: -0.15 },
     });
@@ -6136,6 +6138,11 @@ return Plotly;
     const distB = periodB ? distComputeDistribution(rowsB, groupDim, metric) : null;
     const outcomeOrder = uniq(distA.overallAgg.map((row) => row.group).concat(distB ? distB.overallAgg.map((row) => row.group) : []))
       .sort((a, b) => (distA.overallShare.get(b) || 0) - (distA.overallShare.get(a) || 0));
+    const outcomeKey = outcomeOrder.join("\u001f");
+    if (state.distOutcomeKey !== outcomeKey) {
+      state.distOutcomeKey = outcomeKey;
+      $("distIndexSort").value = "desc";
+    }
 
     $("distBaselineSubtitle").textContent = distB
       ? `${periodA || "—"}: ${formatMetric(distA.overallTotal, metric, true)} total · ${periodB || "—"}: ${formatMetric(distB.overallTotal, metric, true)} total`
@@ -6171,16 +6178,17 @@ return Plotly;
     if (distB) for (const [group, value] of distB.groupTotals) combinedTotals.set(group, (combinedTotals.get(group) || 0) + value);
     const sortAsc = $("distIndexSort")?.value === "asc";
     const groupIndexScore = (group) => {
-      let score = 0;
+      let best = 0;
+      let bestAbs = -1;
       for (const outcome of outcomeOrder) {
         const idxA = distA.indexFor(group, outcome);
-        if (Number.isFinite(idxA)) score = Math.max(score, Math.abs(idxA));
+        if (Number.isFinite(idxA) && Math.abs(idxA) > bestAbs) { bestAbs = Math.abs(idxA); best = idxA; }
         if (distB) {
           const idxB = distB.indexFor(group, outcome);
-          if (Number.isFinite(idxB)) score = Math.max(score, Math.abs(idxB));
+          if (Number.isFinite(idxB) && Math.abs(idxB) > bestAbs) { bestAbs = Math.abs(idxB); best = idxB; }
         }
       }
-      return score;
+      return best;
     };
     const byRevenue = [...combinedTotals.entries()].sort((a, b) => b[1] - a[1]).map(([group]) => group);
     const topByRevenue = new Set(byRevenue.slice(0, top));
@@ -6195,10 +6203,22 @@ return Plotly;
 
     const allGroups = sortGroups(byRevenue);
     const classForIndex = (value) => Number.isFinite(value) ? (value >= 0 ? "metric-good" : "metric-bad") : "";
+    const rowCountA = new Map();
+    for (const row of rowsA) {
+      const g = C.dimensionValue(row, groupDim);
+      rowCountA.set(g, (rowCountA.get(g) || 0) + 1);
+    }
+    const rowCountB = new Map();
+    if (distB) for (const row of rowsB) {
+      const g = C.dimensionValue(row, groupDim);
+      rowCountB.set(g, (rowCountB.get(g) || 0) + 1);
+    }
     const indexColumns = [
       { key: "group", label: dimensionLabel(groupDim) },
+      { key: "recordsA", label: `# Records${distB ? ` (${periodA})` : ""}`, numeric: true, format: (value) => value.toLocaleString() },
       { key: "totalA", label: `${periodA || "Period"} ${metricLabels[metric]}`, numeric: true, format: (value) => formatMetric(value, metric) },
     ];
+    if (distB) indexColumns.push({ key: "recordsB", label: `# Records (${periodB})`, numeric: true, format: (value) => value.toLocaleString() });
     outcomeOrder.forEach((outcome) => {
       indexColumns.push({ key: `revenueA_${outcome}`, label: `${outcome} ${metricLabels[metric]}${distB ? ` (${periodA})` : ""}`, numeric: true, format: (value) => formatMetric(value, metric) });
       indexColumns.push({ key: `shareA_${outcome}`, label: `${outcome} %${distB ? ` (${periodA})` : ""}`, numeric: true, format: format.percent });
@@ -6210,7 +6230,8 @@ return Plotly;
       }
     });
     const indexRows = allGroups.map((group) => {
-      const row = { group, totalA: distA.groupTotals.get(group) || 0 };
+      const row = { group, recordsA: rowCountA.get(group) || 0, totalA: distA.groupTotals.get(group) || 0 };
+      if (distB) row.recordsB = rowCountB.get(group) || 0;
       outcomeOrder.forEach((outcome) => {
         row[`revenueA_${outcome}`] = distA.revenueFor(group, outcome);
         row[`shareA_${outcome}`] = distA.shareFor(group, outcome);
