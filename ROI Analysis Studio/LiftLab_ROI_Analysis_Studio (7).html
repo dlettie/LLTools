@@ -109,6 +109,7 @@
       <button class="tab-btn" data-tab="trending">Trending</button>
       <button class="tab-btn" data-tab="performance">Group Performance</button>
       <button class="tab-btn" data-tab="indexing">Indexing</button>
+      <button class="tab-btn" data-tab="distindex">Outcome Distribution Index</button>
       <button class="tab-btn" data-tab="returns">Diminishing Returns</button>
       <button class="tab-btn" data-tab="cost">Cost & Platform</button>
       <button class="tab-btn" data-tab="model">Model Results</button>
@@ -222,6 +223,33 @@
         <div class="card"><div class="card-head"><div><h3>Paid outcome index</h3><div id="indexBaseline" class="subtle"></div></div></div><div id="indexChart" class="chart tall"></div><div class="index-legend"><span id="indexNegativeLabel">← Outcome B</span><span>Paid baseline = 0</span><span id="indexPositiveLabel">Outcome A →</span></div></div>
         <div class="card"><div class="card-head"><div><h3>Index detail</h3><div class="subtle">Paid-media modeled contribution for each selected outcome or group.</div></div></div><div id="indexTable"></div></div>
       </div>
+    </section>
+
+    <section class="tab" id="tab-distindex">
+      <div class="page-head"><div><h2>Outcome Distribution Index</h2><p>See how revenue splits across outcomes for each channel or tactic, then compare that split to the overall average mix.</p></div></div>
+      <div class="card">
+        <div class="toolbar">
+          <label>Outcome view<select id="distEntityMode"><option value="groups">Outcome groups</option><option value="individual">Individual outcomes</option></select></label>
+          <label>Group by<select id="distGroup"><option value="channel">Channel</option><option value="tactic">Tactic</option></select></label>
+          <label>Metric<select id="distMetric"><option value="revenue">Revenue</option><option value="orders">Orders</option></select></label>
+          <label>Index periods<select id="distCompareMode"><option value="single">Single period</option><option value="compare">Compare two periods</option></select></label>
+          <label>Period grain<select id="distGrain"><option value="month" selected>Month</option><option value="quarter">Quarter</option><option value="year">Year</option><option value="week">Week</option></select></label>
+          <label>Period<select id="distPeriodA"></select></label>
+          <label id="distPeriodBWrap" class="hidden">Compare to<select id="distPeriodB"></select></label>
+        </div>
+        <div class="denominator-note">Average distribution = total <span id="distMetricNote">revenue</span> by outcome across every paid <span id="distGroupNote">channel</span> for the selected period (Base/unpaid rows are excluded so baseline revenue doesn't inflate the mix). Index = (outcome's share of that group's total) ÷ (outcome's share of the overall total) × 100 — 100 means the group matches the average mix; above 100 over-indexes toward that outcome, below 100 under-indexes. Outcome view controls whether outcomes are rolled up into your saved outcome groups or broken out individually.</div>
+      </div>
+      <div class="grid two" style="margin-top:14px">
+        <div class="card"><div class="card-head"><div><h3>Revenue by outcome</h3><div id="distBaselineSubtitle" class="subtle"></div></div></div><div id="distBaselineChart" class="chart"></div><div id="distBaselineTable" class="module-table"></div></div>
+        <div class="card">
+          <div class="card-head"><div><h3>Index vs. average</h3><div class="subtle">Each group's outcome mix vs. the overall average mix (dotted line = average; bars show over/under-index).</div></div></div>
+          <div class="grid two" id="distIndexChartsWrap">
+            <div><div class="subtle" id="distIndexChartALabel"></div><div id="distIndexChart" class="chart tall"></div></div>
+            <div id="distIndexChartBWrap" class="hidden"><div class="subtle" id="distIndexChartBLabel"></div><div id="distIndexChartB" class="chart tall"></div></div>
+          </div>
+        </div>
+      </div>
+      <div class="card" style="margin-top:14px"><div class="card-head"><div><h3>Index detail</h3><div class="subtle">Total revenue, outcome share, and index for every group under the current filters.</div></div><button class="btn ghost export-table" data-table="distIndexTable">Export CSV</button></div><div id="distIndexTable" class="module-table"></div></div>
     </section>
 
     <section class="tab" id="tab-returns">
@@ -4502,6 +4530,7 @@ return Plotly;
     if (grain === "day") return parsed;
     if (grain === "month") return parsed.slice(0, 7);
     const value = new Date(`${parsed}T00:00:00Z`);
+    if (grain === "year") return `${value.getUTCFullYear()}`;
     if (grain === "quarter") return `${value.getUTCFullYear()} Q${Math.floor(value.getUTCMonth() / 3) + 1}`;
     if (grain === "week") {
       const day = value.getUTCDay() || 7;
@@ -5967,6 +5996,157 @@ return Plotly;
     ], { maxRows: 100 });
   }
 
+  function distPaidRows() {
+    return filteredRows().filter(C.isPaid);
+  }
+  function distGroupedEntities() {
+    const selected = new Set(outcomeSelection());
+    const used = new Set();
+    const entities = [];
+    for (const group of state.groups) {
+      const groupOutcomes = (group.outcomes || []).filter((outcome) => selected.has(outcome));
+      if (!groupOutcomes.length) continue;
+      entities.push({ id: `group:${group.id}`, label: group.name, outcomes: groupOutcomes });
+      groupOutcomes.forEach((outcome) => used.add(outcome));
+    }
+    outcomeSelection().forEach((outcome) => {
+      if (!used.has(outcome)) entities.push({ id: `outcome:${outcome}`, label: outcome, outcomes: [outcome] });
+    });
+    return entities;
+  }
+  function distEntities() {
+    if ($("distEntityMode")?.value === "individual") {
+      return outcomeSelection().map((outcome) => ({ id: `outcome:${outcome}`, label: outcome, outcomes: [outcome] }));
+    }
+    return distGroupedEntities();
+  }
+  function setupDistIndexPeriods() {
+    if (!state.processed) return;
+    const grain = $("distGrain").value || "month";
+    const priorA = $("distPeriodA").value;
+    const priorB = $("distPeriodB").value;
+    const periods = uniq(distPaidRows().map((row) => C.timeBucket(row.date, grain)));
+    const options = periods.map((period) => `<option value="${esc(period)}">${esc(period)}</option>`).join("");
+    $("distPeriodA").innerHTML = options;
+    $("distPeriodB").innerHTML = options;
+    $("distPeriodA").value = periods.includes(priorA) ? priorA : (periods[periods.length - 1] || "");
+    $("distPeriodB").value = periods.includes(priorB) ? priorB : (periods[Math.max(0, periods.length - 2)] || "");
+  }
+  function distComputeDistribution(rows, groupDim, metric) {
+    const outcomes = outcomeSelection();
+    const entities = distEntities();
+    const overallAgg = C.aggregate(rows, { groupBy: "outcome", outcomes, outcomeEntities: entities });
+    const overallTotal = sum(overallAgg.map((row) => row[metric]));
+    const overallShare = new Map(overallAgg.map((row) => [row.group, overallTotal ? row[metric] / overallTotal : null]));
+    const detail = C.aggregate(rows, { groupBy: groupDim, seriesBy: "outcome", outcomes, outcomeEntities: entities });
+    const groupTotals = new Map();
+    for (const row of detail) groupTotals.set(row.group, (groupTotals.get(row.group) || 0) + row[metric]);
+    const indexFor = (group, outcome) => {
+      const groupTotal = groupTotals.get(group);
+      const groupOutcome = detail.find((row) => row.group === group && row.series === outcome)?.[metric] || 0;
+      const groupShare = groupTotal ? groupOutcome / groupTotal : null;
+      const outcomeAvgShare = overallShare.get(outcome);
+      return Number.isFinite(groupShare) && outcomeAvgShare ? (groupShare / outcomeAvgShare) * 100 : null;
+    };
+    return { overallAgg, overallTotal, overallShare, detail, groupTotals, indexFor };
+  }
+  function renderDistIndexChart(containerId, dist, groups, outcomeOrder) {
+    plot(containerId, outcomeOrder.map((outcome) => ({
+      type: "bar", orientation: "h", name: outcome,
+      y: groups, x: groups.map((group) => {
+        const index = dist.indexFor(group, outcome);
+        return Number.isFinite(index) ? index - 100 : null;
+      }),
+      marker: { color: colorFor(outcome, "outcome") },
+      customdata: groups.map((group) => dist.indexFor(group, outcome)),
+      hovertemplate: "%{y}<br>" + esc(outcome) + ": %{customdata:.0f} index<extra></extra>",
+    })), {
+      margin: { l: 200, r: 30, t: 20, b: 40 }, barmode: "group",
+      xaxis: { title: "Index vs. average (0 = average mix)", zeroline: true, zerolinewidth: 2, zerolinecolor: "#6f8893" },
+      shapes: [{ type: "line", x0: 0, x1: 0, xref: "x", yref: "paper", y0: 0, y1: 1, line: { color: "#6f8893", width: 2, dash: "dot" } }],
+      legend: { orientation: "h", y: -0.15 },
+    });
+  }
+  function renderDistIndex() {
+    setupDistIndexPeriods();
+    const groupDim = $("distGroup").value || "channel";
+    const metric = $("distMetric").value || "revenue";
+    const compareMode = $("distCompareMode").value || "single";
+    $("distPeriodBWrap").classList.toggle("hidden", compareMode !== "compare");
+    $("distIndexChartBWrap").classList.toggle("hidden", compareMode !== "compare");
+    $("distMetricNote").textContent = metricLabels[metric].toLowerCase();
+    $("distGroupNote").textContent = dimensionLabel(groupDim).toLowerCase();
+    const grain = $("distGrain").value || "month";
+    const periodA = $("distPeriodA").value;
+    const periodB = compareMode === "compare" ? $("distPeriodB").value : "";
+    const rows = distPaidRows();
+    const rowsA = rows.filter((row) => C.timeBucket(row.date, grain) === periodA);
+    const rowsB = periodB ? rows.filter((row) => C.timeBucket(row.date, grain) === periodB) : [];
+    const distA = distComputeDistribution(rowsA, groupDim, metric);
+    const distB = periodB ? distComputeDistribution(rowsB, groupDim, metric) : null;
+    const outcomeOrder = uniq(distA.overallAgg.map((row) => row.group).concat(distB ? distB.overallAgg.map((row) => row.group) : []))
+      .sort((a, b) => (distA.overallShare.get(b) || 0) - (distA.overallShare.get(a) || 0));
+
+    $("distBaselineSubtitle").textContent = distB
+      ? `${periodA || "—"}: ${formatMetric(distA.overallTotal, metric, true)} total · ${periodB || "—"}: ${formatMetric(distB.overallTotal, metric, true)} total`
+      : `${periodA || "—"} · ${formatMetric(distA.overallTotal, metric, true)} total across all paid ${dimensionLabel(groupDim).toLowerCase()}s`;
+    plot("distBaselineChart", distB ? [
+      { type: "bar", name: periodA || "Period A", x: outcomeOrder, y: outcomeOrder.map((outcome) => distA.overallShare.get(outcome) || 0), marker: { color: "#0f6878" }, hovertemplate: `%{x}<br>${esc(periodA)}: %{y:.1%}<extra></extra>` },
+      { type: "bar", name: periodB || "Period B", x: outcomeOrder, y: outcomeOrder.map((outcome) => distB.overallShare.get(outcome) || 0), marker: { color: "#f28e2b" }, hovertemplate: `%{x}<br>${esc(periodB)}: %{y:.1%}<extra></extra>` },
+    ] : [
+      { type: "bar", x: outcomeOrder, y: outcomeOrder.map((outcome) => distA.overallShare.get(outcome) || 0), marker: { color: outcomeOrder.map((outcome) => colorFor(outcome, "outcome")) }, text: outcomeOrder.map((outcome) => format.percent(distA.overallShare.get(outcome) || 0)), textposition: "outside", cliponaxis: false, hovertemplate: "%{x}<br>%{y:.1%}<extra></extra>" },
+    ], { margin: { l: 55, r: 20, t: 20, b: 60 }, yaxis: { title: "Share of total", tickformat: ".0%" }, barmode: "group", showlegend: !!distB });
+
+    const baselineColumns = [
+      { key: "outcome", label: dimensionLabel("outcome") },
+      { key: "revenueA", label: `${periodA || "Period"} ${metricLabels[metric]}`, numeric: true, format: (value) => formatMetric(value, metric) },
+      { key: "shareA", label: `${periodA || "Period"} % of total`, numeric: true, format: format.percent },
+    ];
+    if (distB) baselineColumns.push(
+      { key: "revenueB", label: `${periodB} ${metricLabels[metric]}`, numeric: true, format: (value) => formatMetric(value, metric) },
+      { key: "shareB", label: `${periodB} % of total`, numeric: true, format: format.percent },
+      { key: "shareChange", label: "Point change", numeric: true, format: (value) => Number.isFinite(value) ? `${value >= 0 ? "+" : ""}${(value * 100).toFixed(1)} pt` : "—" },
+    );
+    const baselineRows = outcomeOrder.map((outcome) => {
+      const revenueA = distA.overallAgg.find((row) => row.group === outcome)?.[metric] || 0;
+      const shareA = distA.overallShare.get(outcome) ?? null;
+      const revenueB = distB ? (distB.overallAgg.find((row) => row.group === outcome)?.[metric] || 0) : null;
+      const shareB = distB ? (distB.overallShare.get(outcome) ?? null) : null;
+      return { outcome, revenueA, shareA, revenueB, shareB, shareChange: Number.isFinite(shareA) && Number.isFinite(shareB) ? shareB - shareA : null };
+    });
+    table("distBaselineTable", baselineRows, baselineColumns, { maxRows: 50 });
+
+    const top = 15;
+    const combinedTotals = new Map(distA.groupTotals);
+    if (distB) for (const [group, value] of distB.groupTotals) combinedTotals.set(group, (combinedTotals.get(group) || 0) + value);
+    const groups = [...combinedTotals.entries()].sort((a, b) => b[1] - a[1]).slice(0, top).map(([group]) => group);
+
+    $("distIndexChartALabel").textContent = distB ? (periodA || "Period A") : "";
+    $("distIndexChartBLabel").textContent = periodB || "Period B";
+    renderDistIndexChart("distIndexChart", distA, groups, outcomeOrder);
+    if (distB) renderDistIndexChart("distIndexChartB", distB, groups, outcomeOrder);
+
+    const allGroups = [...combinedTotals.entries()].sort((a, b) => b[1] - a[1]).map(([group]) => group);
+    const classForIndex = (value) => Number.isFinite(value) ? (value >= 100 ? "metric-good" : "metric-bad") : "";
+    const indexColumns = [
+      { key: "group", label: dimensionLabel(groupDim) },
+      { key: "totalA", label: `${periodA || "Period"} ${metricLabels[metric]}`, numeric: true, format: (value) => formatMetric(value, metric) },
+    ];
+    outcomeOrder.forEach((outcome) => {
+      indexColumns.push({ key: `indexA_${outcome}`, label: `${outcome} index${distB ? ` (${periodA})` : ""}`, numeric: true, format: (value) => Number.isFinite(value) ? Math.round(value) : "—", className: (row) => classForIndex(row[`indexA_${outcome}`]) });
+      if (distB) indexColumns.push({ key: `indexB_${outcome}`, label: `${outcome} index (${periodB})`, numeric: true, format: (value) => Number.isFinite(value) ? Math.round(value) : "—", className: (row) => classForIndex(row[`indexB_${outcome}`]) });
+    });
+    const indexRows = allGroups.map((group) => {
+      const row = { group, totalA: distA.groupTotals.get(group) || 0 };
+      outcomeOrder.forEach((outcome) => {
+        row[`indexA_${outcome}`] = distA.indexFor(group, outcome);
+        if (distB) row[`indexB_${outcome}`] = distB.indexFor(group, outcome);
+      });
+      return row;
+    });
+    table("distIndexTable", indexRows, indexColumns, { maxRows: 100 });
+  }
+
   function curveSourceKey(period, outcome, platformChannel) {
     return `${period.startDate}|${period.endDate}\u001f${outcome}\u001f${platformChannel}`;
   }
@@ -6761,6 +6941,7 @@ return Plotly;
     else if (active === "tab-trending") renderTrending();
     else if (active === "tab-performance") renderPerformance();
     else if (active === "tab-indexing") renderIndexing();
+    else if (active === "tab-distindex") renderDistIndex();
     else if (active === "tab-returns") renderDiminishingReturns();
     else if (active === "tab-cost") renderCost();
     else if (active === "tab-model") renderModel();
@@ -6831,7 +7012,7 @@ return Plotly;
       renderOverview();
       installSnapshotButtons();
     });
-    ["salesDriverDimension", "salesDriverTableColumns", "shareDimension", "shareTableColumns", "shareDenominator", "comboBarMetric", "comboBarDimension", "comboLineMetric", "waterfallPeriodA", "waterfallPeriodB", "waterfallMetric", "waterfallDimension", "waterfallTop", "indexOutcomeA", "indexOutcomeB", "indexMetric", "indexDimension", "performanceGroup", "performanceAcross", "performanceMetric", "performanceShare", "performanceSort", "costGroup", "costMinSpend", "platformRatioMetric", "modelGroup", "modelPaid", "modelTop"].forEach((id) => $(id).onchange = renderAll);
+    ["salesDriverDimension", "salesDriverTableColumns", "shareDimension", "shareTableColumns", "shareDenominator", "comboBarMetric", "comboBarDimension", "comboLineMetric", "waterfallPeriodA", "waterfallPeriodB", "waterfallMetric", "waterfallDimension", "waterfallTop", "indexOutcomeA", "indexOutcomeB", "indexMetric", "indexDimension", "distEntityMode", "distGroup", "distMetric", "distCompareMode", "distGrain", "distPeriodA", "distPeriodB", "performanceGroup", "performanceAcross", "performanceMetric", "performanceShare", "performanceSort", "costGroup", "costMinSpend", "platformRatioMetric", "modelGroup", "modelPaid", "modelTop"].forEach((id) => $(id).onchange = renderAll);
     $("trendGrain").onchange = () => { setupTrendingPeriods(); renderAll(); };
     $("curvePeriod").onchange = () => {
       state.curveOutcomeSelection = [];
