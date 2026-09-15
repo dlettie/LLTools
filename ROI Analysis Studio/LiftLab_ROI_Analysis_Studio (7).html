@@ -4761,7 +4761,7 @@ return Plotly;
     if (metric === "orders") return compact ? format.compact(value) : format.number(value, 1);
     return format.number(value, 2);
   }
-  const colors = ["#0f6878", "#f28e2b", "#34b679", "#d84c7f", "#7557d3", "#d7ae3c", "#35bfd0", "#e45756", "#9c6b3f", "#4d7bce", "#7f8c3a", "#b65fcf", "#2f968f", "#ee6c4d", "#64748b", "#8c564b"];
+  const colors = ["#86EFAC", "#93C5FD", "#F9A8D4", "#FDE047", "#FDBA74"];
   const state = {
     datasets: [],
     mapping: null,
@@ -6173,7 +6173,7 @@ return Plotly;
     });
     table("distBaselineTable", baselineRows, baselineColumns, { maxRows: 50 });
 
-    const top = 15;
+    const top = 30;
     const combinedTotals = new Map(distA.groupTotals);
     if (distB) for (const [group, value] of distB.groupTotals) combinedTotals.set(group, (combinedTotals.get(group) || 0) + value);
     const sortAsc = $("distIndexSort")?.value === "asc";
