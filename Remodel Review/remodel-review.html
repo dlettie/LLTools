@@ -1,0 +1,864 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Remodel Review</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <style>
+    :root {
+      --bg: #f7f8fa; --card: #ffffff; --text: #1a1d29; --muted: #6b7280; --border: #e7e9ef; --border-strong: #d7dbe4;
+      --primary: #14b8a6; --primary-dark: #0f9488; --primary-soft: rgba(20,184,166,.08);
+      --paid: #14b8a6; --unpaid: #8b5cf6; --baseline: #94a3b8; --unassigned: #f59e0b;
+      --up: #0f9488; --down: #e11d48;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 28px 20px 60px; background: var(--bg); color: var(--text); font: 14px/1.45 "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif; -webkit-font-smoothing: antialiased; }
+    .container { max-width: 1280px; margin: 0 auto; }
+    h1 { margin: 0 0 4px; font-size: 20px; }
+    .sub { margin: 0 0 18px; color: var(--muted); }
+    .tab-bar { display: flex; gap: 2px; border-bottom: 2px solid var(--border); margin-bottom: 18px; flex-wrap: wrap; }
+    .tab-btn { padding: 10px 20px; border: 0; border-bottom: 3px solid transparent; background: none; color: var(--muted); font: inherit; font-weight: 600; cursor: pointer; }
+    .tab-btn:hover { color: var(--primary); }
+    .tab-btn.active { color: var(--primary); border-bottom-color: var(--primary); background: var(--primary-soft); border-radius: 6px 6px 0 0; }
+    .tab-btn:disabled { opacity: .45; cursor: not-allowed; }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 18px 20px; margin-bottom: 18px; box-shadow: 0 1px 3px rgba(0,0,0,.04); }
+    .card h2 { margin: 0 0 4px; font-size: 16px; }
+    .card h3 { margin: 0 0 10px; font-size: 14px; }
+    .hint { color: var(--muted); font-size: 13px; margin: 0 0 12px; }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+    .grid2 > * { min-width: 0; }   /* lets a wide table scroll inside its own card instead of stretching the page */
+    .container.wide { max-width: 1800px; }
+    /* Prod | Both | Remodel slider: the tables share a grid whose columns animate between 1fr/0fr splits */
+    .slide { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: start; transition: grid-template-columns .4s ease, gap .4s ease; }
+    .slide > * { min-width: 0; overflow: hidden; transition: opacity .3s ease; }
+    .slide[data-mode="prod"] { grid-template-columns: 1fr 0fr; gap: 0; }
+    .slide[data-mode="remodel"] { grid-template-columns: 0fr 1fr; gap: 0; }
+    .slide[data-mode="prod"] > :last-child, .slide[data-mode="remodel"] > :first-child { opacity: 0; border-width: 0; pointer-events: none; }
+    @media (max-width: 900px) { .slide, .slide[data-mode] { grid-template-columns: 1fr; gap: 18px; } .slide[data-mode="prod"] > :last-child, .slide[data-mode="remodel"] > :first-child { display: none; } }
+    .vslider { position: relative; display: inline-grid; grid-template-columns: repeat(3, 84px); border: 1px solid var(--border-strong); border-radius: 999px; background: #fff; overflow: hidden; }
+    .vslider .thumb { position: absolute; top: 0; bottom: 0; left: 0; width: 33.333%; background: var(--primary); border-radius: 999px; transition: transform .35s cubic-bezier(.4, 0, .2, 1); }
+    .vslider button { position: relative; z-index: 1; padding: 7px 0; border: 0; background: none; font: inherit; font-weight: 600; color: var(--muted); cursor: pointer; transition: color .3s; }
+    .vslider button.on { color: #fff; }
+    .dtable th, .dtable td { padding: 6px 8px; font-size: 12px; }
+    @media (max-width: 900px) { .grid2 { grid-template-columns: 1fr; } }
+    label { display: block; margin-bottom: 4px; font-size: 12px; font-weight: 600; color: var(--muted); }
+    select, input[type=text], input[type=file] { width: 100%; padding: 7px 9px; border: 1px solid var(--border-strong); border-radius: 6px; background: #fff; color: var(--text); font: inherit; }
+    select:focus, input:focus { outline: 2px solid rgba(20,184,166,.35); border-color: var(--primary); }
+    button.btn { padding: 7px 14px; border: 1px solid var(--border-strong); border-radius: 6px; background: #fff; color: var(--text); font: inherit; font-weight: 600; cursor: pointer; }
+    button.btn:hover { border-color: var(--primary); color: var(--primary-dark); }
+    button.btn.primary { background: var(--primary); border-color: var(--primary); color: #fff; }
+    button.btn.primary:hover { background: var(--primary-dark); color: #fff; }
+    .maprow { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 12px; }
+    @media (max-width: 900px) { .maprow { grid-template-columns: 1fr 1fr; } }
+    .filebadge { margin-top: 8px; font-size: 12px; color: var(--muted); }
+    .warn { margin-top: 8px; padding: 8px 10px; border-radius: 6px; background: rgba(245,158,11,.1); border: 1px solid rgba(245,158,11,.35); font-size: 12px; }
+    .filters { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end; }
+    .filters > div { min-width: 170px; }
+    .filters .seg { display: flex; }
+    .seg button { padding: 7px 12px; border: 1px solid var(--border-strong); background: #fff; font: inherit; font-weight: 600; color: var(--muted); cursor: pointer; }
+    .seg button:first-child { border-radius: 6px 0 0 6px; } .seg button:last-child { border-radius: 0 6px 6px 0; border-left: 0; }
+    .seg button.on { background: var(--primary-soft); color: var(--primary-dark); border-color: var(--primary); }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 7px 10px; text-align: right; border-bottom: 1px solid var(--border); white-space: nowrap; }
+    th:first-child, td:first-child { text-align: left; }
+    th { font-size: 12px; font-weight: 600; color: var(--muted); background: #fafbfc; position: sticky; top: 0; z-index: 1; }
+    th.sortable { cursor: pointer; user-select: none; } th.sortable:hover { color: var(--primary-dark); }
+    th.grp { text-align: center; border-left: 1px solid var(--border); color: var(--text); }
+    td.sepl, th.sepl { border-left: 1px solid var(--border); }
+    tr.section td { background: var(--primary-soft); color: var(--text); font-weight: 700; border-top: 1px solid var(--border-strong); }
+    tr.total td { font-weight: 700; background: #fafbfc; }
+    .tablewrap { overflow: auto; max-height: 68vh; border: 1px solid var(--border); border-radius: 6px; }
+    .tablewrap.short { max-height: 420px; }
+    .num { font-variant-numeric: tabular-nums; }
+    .muted { color: var(--muted); }
+    .up { color: var(--up); } .down { color: var(--down); }
+    .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; }
+    .b-paid { background: var(--paid); } .b-unpaid { background: var(--unpaid); } .b-baseline { background: var(--baseline); } .b-unassigned { background: var(--unassigned); }
+    .pill { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; color: #fff; }
+    .stack { display: flex; height: 26px; border-radius: 5px; overflow: hidden; background: var(--border); }
+    .stack > div { display: grid; place-items: center; min-width: 0; color: #fff; font-size: 11px; font-weight: 600; overflow: hidden; }
+    .barlabel { display: grid; grid-template-columns: 64px 1fr; gap: 10px; align-items: center; margin-bottom: 6px; }
+    .barlabel span { font-size: 12px; font-weight: 600; color: var(--muted); }
+    .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(480px, 1fr)); gap: 18px; }
+    @media (max-width: 560px) { .cards { grid-template-columns: 1fr; } }
+    .cards .card { margin: 0; }
+    .cardhead { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; margin-bottom: 12px; }
+    .cardhead small { color: var(--muted); }
+    .empty { padding: 30px; text-align: center; color: var(--muted); }
+    .deltabar { display: inline-block; height: 8px; border-radius: 2px; vertical-align: middle; margin-left: 6px; }
+    .setup-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; align-items: center; }
+    .rank { display: inline-block; min-width: 22px; color: var(--muted); }
+    td.wrap { white-space: normal; }
+    .outmap input[type=text] { width: 100%; }
+  </style>
+</head>
+<body>
+<div class="container">
+  <h1>Remodel Review</h1>
+  <p class="sub">Compare a remodel against the production model: bucket mix, paid media contribution and channel detail. Data stays in your browser.</p>
+
+  <div class="tab-bar" id="tabs">
+    <button class="tab-btn active" data-tab="setup">Setup</button>
+    <button class="tab-btn" data-tab="mix" disabled>1 · Bucket Mix</button>
+    <button class="tab-btn" data-tab="paid" disabled>2 · Paid Contribution</button>
+    <button class="tab-btn" data-tab="detail" disabled>3 · Detailed View</button>
+  </div>
+
+  <!-- SETUP -->
+  <section id="tab-setup">
+    <div class="card">
+      <h2>Upload</h2>
+      <p class="hint">Drop in the model workbook. The tool finds the Prod and Remodel sheets by name (e.g. <b>Prod_data</b>, <b>Remodel_data</b>), or upload two files with “prod” and “remodel” in their names. .xlsx or .csv.</p>
+      <input type="file" id="uploadInput" accept=".xlsx,.xls,.csv" multiple>
+      <div class="filebadge" id="uploadStatus"></div>
+    </div>
+    <div class="grid2">
+      <div class="card" id="slot-prod"></div>
+      <div class="card" id="slot-remodel"></div>
+    </div>
+    <div class="card" id="mapCard" hidden></div>
+    <div class="card" id="bucketCard" hidden>
+      <h2>Channel buckets</h2>
+      <p class="hint">Assign every channel to Paid, Unpaid or Baseline. A channel’s bucket comes from (1) your manual pick here, then (2) the <b>mapping tab</b> above if you loaded one, then (3) auto-detect: any channel with spend is <b>Paid</b>; channels without spend are <b>Baseline</b> or <b>Unpaid</b> (promotions count as Unpaid), using the Segment column or channel name to tell them apart. Override any of them below. Assignments apply to both files and are remembered in this browser.</p>
+      <div class="filters">
+        <div style="flex:1"><label>Filter channels</label><input type="text" id="bucketFilter" placeholder="Search channels…"></div>
+        <div><label>Set all visible to</label>
+          <select id="bulkBucket"><option value="">Choose…</option><option value="paid">Paid</option><option value="unpaid">Unpaid</option><option value="baseline">Baseline</option></select></div>
+        <div><button class="btn" id="resetBuckets" title="Removes your manual picks so the mapping tab / auto-detect apply">Clear manual overrides</button></div>
+      </div>
+      <div class="warn" id="bucketWarn" hidden></div>
+      <div class="tablewrap short" style="margin-top:12px"><table id="bucketTable"></table></div>
+    </div>
+    <div class="card" id="outcomeCard" hidden>
+      <h2>Outcomes</h2>
+      <p class="hint">Outcome names often differ between models (e.g. “Retail” vs “All - retail”). Outcomes with the same <b>compare as</b> label are summed together and matched across files. Untick <b>In total</b> for any outcome that overlaps another (e.g. an “All - amazon” roll-up alongside “Amazon - new / existing”) so the combined total does not double count.</p>
+      <div class="tablewrap short"><table id="outcomeTable" class="outmap"></table></div>
+    </div>
+    <div class="setup-actions" id="goRow" hidden>
+      <button class="btn primary" id="goBtn">Run review →</button>
+      <span class="muted" id="goMsg"></span>
+    </div>
+  </section>
+
+  <!-- ANALYSIS -->
+  <section id="tab-analysis" hidden>
+    <div class="card" id="filterCard">
+      <div class="filters">
+        <div id="fCatWrap"><label>Product category</label><select id="fCat"></select></div>
+        <div id="fOutWrap"><label>Business outcome</label><select id="fOut"></select></div>
+        <div id="fLevelWrap"><label>Level</label>
+          <div class="seg" id="fLevel"><button data-v="channel" class="on">Channel</button><button data-v="tactic">Tactic</button></div></div>
+      </div>
+      <div class="hint" id="scopeNote" style="margin:10px 0 0"></div>
+    </div>
+    <div id="view"></div>
+  </section>
+</div>
+
+<script>
+/* ============================== helpers ============================== */
+const $ = (s, r = document) => r.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const norm = s => String(s ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
+const hkey = s => String(s ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+const num = v => {
+  if (typeof v === 'number') return isFinite(v) ? v : 0;
+  const n = parseFloat(String(v ?? '').replace(/[$,%\s]/g, ''));
+  return isFinite(n) ? n : 0;
+};
+const fmtMoney = v => {
+  if (v == null || !isFinite(v)) return '—';
+  const a = Math.abs(v), s = v < 0 ? '-' : '';
+  if (a >= 1e6) return s + '$' + (a / 1e6).toFixed(2) + 'M';
+  if (a >= 1e4) return s + '$' + (a / 1e3).toFixed(1) + 'K';
+  return s + '$' + Math.round(a).toLocaleString();
+};
+const fmtPct = v => v == null || !isFinite(v) ? '—' : (v * 100).toFixed(1) + '%';
+const fmtX = v => v == null || !isFinite(v) ? '—' : v.toFixed(2) + 'x';
+const fmtDeltaPts = v => v == null || !isFinite(v) ? '—' : `<span class="${v > 0.0005 ? 'up' : v < -0.0005 ? 'down' : 'muted'}">${v > 0 ? '+' : ''}${(v * 100).toFixed(1)} pts</span>`;
+const fmtDeltaPct = (a, b) => {
+  if (a == null || b == null || !isFinite(a) || !isFinite(b) || a === 0) return '<span class="muted">—</span>';
+  const d = (b - a) / Math.abs(a);
+  return `<span class="${d > 0.0005 ? 'up' : d < -0.0005 ? 'down' : 'muted'}">${d > 0 ? '+' : ''}${(d * 100).toFixed(1)}%</span>`;
+};
+const div = (a, b) => b ? a / b : null;
+const BUCKETS = [['paid', 'Paid'], ['unpaid', 'Unpaid'], ['baseline', 'Baseline']];
+const BUCKET_LABEL = { paid: 'Paid', unpaid: 'Unpaid', baseline: 'Baseline', unassigned: 'Unassigned' };
+const STORE_KEY = 'remodelReview.v1';
+
+/* ============================== state ============================== */
+const FIELDS = [
+  ['channel', 'Channel', true, ['channel', 'platformchannel', 'mediachannel']],
+  ['tactic', 'Tactic (optional)', false, ['tactic', 'tacticname']],
+  ['outcome', 'Business outcome', true, ['businessoutcome', 'outcome']],
+  ['category', 'Product category', false, ['productcategory', 'category']],
+  ['spend', 'Spend', true, ['spend', 'cost']],
+  ['revenue', 'Revenue', true, ['revenue', 'incrementalrevenue', 'attributedrevenue']],
+  ['segment', 'Segment / bucket (optional)', false, ['segment', 'bucket']],
+];
+const SLOTS = { prod: { title: 'Prod data', sub: 'What came before', sheet: 'prod_data' }, remodel: { title: 'Remodel data', sub: 'What exists now', sheet: 'remodel_data' } };
+const state = {
+  sources: [],
+  files: { prod: null, remodel: null },      // {name, wb, sheet, rows, headers, map, agg, skipped}
+  mapSources: [], mapCfg: { idx: '', chCol: '', bkCol: '' }, mapBuckets: new Map(), mapIssues: { rows: 0, bad: [], conflicts: [] },   // bucket mapping tab (per upload)
+  bucketOverrides: {}, outcomeGroups: {}, outcomeExclude: {},
+  channels: new Map(),                        // normKey -> {name, segs:{prod,remodel}, rev:{prod,remodel}}
+  view: { tab: 'setup', cat: '__all__', out: '__all__', level: 'channel', dsort: { P: { key: 'val', k: null, m: 'rev', dir: -1 }, R: { key: 'val', k: null, m: 'rev', dir: -1 } }, detailN: 0, detailMetric: 'rev', detailMode: 'both', detailOff: {}, detailCatOff: {}, topN: 15, paidMode: 'pct', mixOff: {}, mixCatOff: {}, mixMode: 'both', mixMetric: 'pct', bucketFilter: 'all' },
+};
+try { Object.assign(state, JSON.parse(localStorage.getItem(STORE_KEY) || '{}')); } catch (e) {}
+const persist = () => { try { localStorage.setItem(STORE_KEY, JSON.stringify({ bucketOverrides: state.bucketOverrides, outcomeGroups: state.outcomeGroups, outcomeExclude: state.outcomeExclude })); } catch (e) {} };
+
+/* ============================== file loading ============================== */
+function renderSlot(which) {
+  const s = SLOTS[which], f = state.files[which], el = $('#slot-' + which);
+  const opts = state.sources.map((src, i) => `<option value="${i}" ${f && f.source === src ? 'selected' : ''}>${esc(src.label)}</option>`).join('');
+  el.innerHTML = `<h2>${s.title}</h2><p class="hint">${s.sub}.</p>
+    ${state.sources.length ? `<label>Source</label><select data-src><option value="">${f ? 'Choose…' : 'Not found — choose the sheet…'}</option>${opts}</select>` : '<div class="muted">Upload a file above.</div>'}
+    <div class="filebadge" id="badge-${which}"></div><div id="map-${which}"></div><div id="rep-${which}"></div>`;
+  const sel = el.querySelector('[data-src]');
+  if (sel) sel.addEventListener('change', e => { if (e.target.value !== '') useSource(which, state.sources[+e.target.value]); });
+  if (f) renderMapper(which);
+}
+
+/* One upload, one or more files. Every sheet that looks like a model output becomes a candidate source;
+   Prod / Remodel are picked by sheet name (e.g. Prod_data, Remodel_data), then by file name. */
+function headersOf(ws) {
+  if (!ws || !ws['!ref']) return [];
+  const r = XLSX.utils.decode_range(ws['!ref']), out = [];
+  for (let c = r.s.c; c <= r.e.c; c++) { const cell = ws[XLSX.utils.encode_cell({ r: r.s.r, c })]; if (cell && cell.v != null) out.push(String(cell.v)); }
+  return out;
+}
+function looksLikeModelOutput(headers) {
+  const usable = headers.filter(h => !/%|\bref\b|delta/i.test(h));
+  return FIELDS.filter(x => x[2]).every(([, , , aliases]) => aliases.some(a => usable.some(h => norm(h) === a || hkey(h) === a)));
+}
+function scoreSource(src, which) {
+  const other = which === 'prod' ? 'remodel' : 'prod';
+  const sn = hkey(src.sheet), fn = hkey(src.file);
+  let sc = 0;
+  if (sn === which + 'data') sc += 6;
+  else if (sn.includes(which) && !sn.includes(other)) sc += 3;
+  if (fn.includes(which) && !fn.includes(other)) sc += 1;
+  if (sn.includes(other) || (fn.includes(other) && !sn.includes(which))) sc -= 4;
+  return sc;
+}
+
+async function loadUpload(fileList) {
+  const status = $('#uploadStatus');
+  status.textContent = 'Reading…';
+  await new Promise(r => setTimeout(r, 20));
+  const sources = [], mapSources = [];
+  try {
+    for (const file of fileList) {
+      const wb = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+      for (const sheet of wb.SheetNames) {
+        const hs = headersOf(wb.Sheets[sheet]);
+        if (!looksLikeModelOutput(hs)) { if (hs.length) mapSources.push({ file: file.name, sheet, wb, label: wb.SheetNames.length > 1 || fileList.length > 1 ? `${file.name} › ${sheet}` : file.name }); continue; }
+        sources.push({ file: file.name, sheet, wb, label: wb.SheetNames.length > 1 || fileList.length > 1 ? `${file.name} › ${sheet}` : file.name });
+      }
+    }
+  } catch (err) { status.innerHTML = `<span class="down">Could not read file: ${esc(err.message)}</span>`; return; }
+  state.sources = sources; state.files = { prod: null, remodel: null };
+  state.mapSources = mapSources; autoPickMapping();
+  const pick = new Map();
+  for (const which of ['prod', 'remodel']) {
+    const best = sources.map(src => ({ src, sc: scoreSource(src, which) })).filter(x => x.sc > 0).sort((a, b) => b.sc - a.sc)[0];
+    if (best) pick.set(which, best.src);
+  }
+  if (pick.get('prod') === pick.get('remodel')) pick.delete('prod'), pick.delete('remodel');   // ambiguous
+  const found = ['prod', 'remodel'].filter(w => pick.get(w)).map(w => `${SLOTS[w].title} → ${pick.get(w).label}`);
+  status.innerHTML = !sources.length ? '<span class="down">No sheets with Channel, Business Outcome, Spend and Revenue columns were found.</span>'
+    : found.length === 2 ? `Identified <b>${esc(found[0])}</b> and <b>${esc(found[1])}</b>.`
+    : `${found.length ? esc(found.join(' · ')) + '. ' : ''}<span class="down">Could not tell which sheet is ${found.length ? 'the other' : 'Prod or Remodel'}. Choose below.</span>`;
+  renderSlot('prod'); renderSlot('remodel');
+  for (const which of ['prod', 'remodel']) if (pick.get(which)) useSource(which, pick.get(which));
+  refreshSetup();   // also resets the bucket/outcome tables and Run button when nothing was identified
+}
+
+function useSource(which, src) {
+  const f = state.files[which] = { source: src, name: src.label, wb: src.wb, sheet: src.sheet };
+  f.rows = XLSX.utils.sheet_to_json(src.wb.Sheets[src.sheet], { defval: '' });
+  f.headers = f.rows.length ? Object.keys(f.rows[0]) : [];
+  f.map = {};
+  for (const [key, , , aliases] of FIELDS) {
+    const usable = f.headers.filter(h => !/%|\bref\b|delta/i.test(h));   // skip "% Revenue", "Ref Revenue", "Revenue Delta"
+    for (const a of aliases) {
+      const h = usable.find(h => norm(h) === a) || usable.find(h => hkey(h) === a);
+      if (h) { f.map[key] = h; break; }
+    }
+  }
+  renderSlot(which);
+  aggregate(which);
+}
+
+function renderMapper(which) {
+  const f = state.files[which];
+  const fields = FIELDS.map(([key, label]) => `<div><label>${label}</label><select data-key="${key}">
+      <option value="">${key === 'category' ? '(none — treat as All)' : key === 'segment' ? '(none)' : key === 'tactic' ? '(none)' : 'Select…'}</option>
+      ${f.headers.map(h => `<option ${f.map[key] === h ? 'selected' : ''}>${esc(h)}</option>`).join('')}</select></div>`).join('');
+  $('#map-' + which).innerHTML = `<details style="margin-top:10px"><summary class="muted" style="cursor:pointer;font-size:12px">Column mapping</summary><div class="maprow">${fields}</div></details>`;
+  $('#map-' + which).addEventListener('change', e => {
+    if (e.target.dataset.key) { f.map[e.target.dataset.key] = e.target.value; aggregate(which); }
+  });
+}
+
+/* Collapse raw rows to (category, outcome, channel, tactic) sums. */
+function aggregate(which) {
+  const f = state.files[which], m = f.map, badge = $('#badge-' + which);
+  f.agg = null;
+  const ready = m.channel && m.outcome && m.spend && m.revenue;
+  if (!ready) {
+    badge.textContent = `${f.name} · ${f.rows.length.toLocaleString()} rows · map the required columns to continue`;
+    return refreshSetup();
+  }
+  const map = new Map(); let skipped = 0;
+  for (const r of f.rows) {
+    const ch = String(r[m.channel] ?? '').trim();
+    if (!ch || /^(grand\s*)?total$/i.test(ch)) { skipped++; continue; }
+    const out = String(r[m.outcome] ?? '').trim() || '(blank)';
+    const cat = m.category ? String(r[m.category] ?? '').trim() || 'All' : 'All';
+    const tac = m.tactic ? String(r[m.tactic] ?? '').trim() || ch : ch;
+    const seg = m.segment ? String(r[m.segment] ?? '').trim() : '';
+    const k = [cat, out, ch, tac].join('\u0001');
+    let a = map.get(k);
+    if (!a) map.set(k, a = { cat, out, ch, tac, seg, spend: 0, rev: 0 });
+    a.spend += num(r[m.spend]); a.rev += num(r[m.revenue]);
+  }
+  f.agg = [...map.values()]; f.skipped = skipped;
+  f.spendRepeats = detectRepeatedSpend(f.agg);
+  $('#rep-' + which).innerHTML = `<label style="margin-top:12px;display:flex;gap:8px;align-items:flex-start;font-weight:500"><input type="checkbox" ${f.spendRepeats ? 'checked' : ''} style="margin-top:3px"><span>Spend is repeated on each outcome / category row — count it once when combining${f.spendRepeats ? ' <span class="muted">(detected)</span>' : ''}</span></label>`;
+  $('#rep-' + which + ' input').addEventListener('change', e => { f.spendRepeats = e.target.checked; });
+  badge.textContent = `${f.name} · ${f.rows.length.toLocaleString()} rows → ${f.agg.length.toLocaleString()} channel/outcome combos` + (skipped ? ` · ${skipped} rows skipped (blank channel or total)` : '');
+  refreshSetup();
+}
+
+/* Many model exports repeat a channel's total spend on every outcome row while revenue is split by outcome.
+   Detect that (same spend across outcomes within a category/channel/tactic) so combined views don't multiply spend. */
+function detectRepeatedSpend(agg) {
+  const g = new Map();
+  for (const a of agg) { if (!a.spend) continue; const k = [a.cat, a.ch, a.tac].join('\u0001'); (g.get(k) || g.set(k, []).get(k)).push(a.spend); }
+  let multi = 0, same = 0;
+  for (const v of g.values()) if (v.length > 1) { multi++; const mx = Math.max(...v), mn = Math.min(...v); if (mx - mn <= mx * 0.005) same++; }
+  return multi >= 3 && same / multi > 0.7;
+}
+
+/* ============================== setup: buckets & outcomes ============================== */
+/* Paid = has spend. No spend: Baseline or Unpaid (promotions count as Unpaid), judged from the Segment column, then the channel name. */
+function autoBucket(c) {
+  if (c.spend) return 'paid';
+  const seg = c.defaultSeg && c.defaultSeg !== 'paid' ? c.defaultSeg : null;
+  return seg || (/base/i.test(c.name) ? 'baseline' : 'unpaid');
+}
+function segToBucket(seg) {
+  const s = norm(seg);
+  if (!s) return null;
+  if (/unpaid|organic|non.?paid|promo/.test(s)) return 'unpaid';   // promotions have no spend, so they sit with Unpaid
+  if (/paid/.test(s)) return 'paid';
+  if (/base/.test(s)) return 'baseline';
+  return null;
+}
+const defaultOutcomeLabel = raw => norm(raw).replace(/^all\s*[-–]\s*/, '') || '(blank)';
+const outcomeLabel = raw => state.outcomeGroups[norm(raw)] ?? defaultOutcomeLabel(raw);
+/* Precedence: manual pick > mapping tab > auto-detect. */
+const bucketOf = chKey => {
+  const o = state.bucketOverrides[chKey] || state.mapBuckets.get(chKey);
+  if (o) return o;
+  const c = state.channels.get(chKey);
+  return (c && (c.defaultBucket)) || 'unassigned';
+};
+const bucketSource = k => state.bucketOverrides[k] ? 'Manual' : state.mapBuckets.has(k) ? 'Mapping tab' : state.mapBuckets.size ? 'Auto · not in mapping' : 'Auto';
+
+/* ---- bucket mapping tab: a sheet with a Channel column and a Bucket column (Paid / Unpaid / Baseline / Promotions) ---- */
+const MAP_CH = ['channel', 'channelname', 'mediachannel', 'platformchannel', 'name'];
+const MAP_BK = ['bucket', 'segment', 'type', 'mediatype', 'channeltype', 'group', 'class', 'classification'];
+function detectMapCols(src) {
+  const hs = headersOf(src.wb.Sheets[src.sheet]);
+  return { chCol: hs.find(h => MAP_CH.includes(hkey(h))) || '', bkCol: hs.find(h => MAP_BK.includes(hkey(h))) || '' };
+}
+function autoPickMapping() {
+  const scored = state.mapSources.map((src, i) => ({ i, ...detectMapCols(src), named: /map/i.test(src.sheet) }));
+  const best = scored.filter(x => x.chCol && x.bkCol).sort((a, b) => b.named - a.named)[0] || scored.find(x => x.named);
+  state.mapCfg = best ? { idx: String(best.i), chCol: best.chCol, bkCol: best.bkCol } : { idx: '', chCol: '', bkCol: '' };
+  applyMapping();
+}
+function applyMapping() {
+  const c = state.mapCfg, src = state.mapSources[c.idx];
+  state.mapBuckets = new Map(); state.mapIssues = { rows: 0, bad: [], conflicts: [] };
+  if (src && c.chCol && c.bkCol) {
+    for (const r of XLSX.utils.sheet_to_json(src.wb.Sheets[src.sheet], { defval: '' })) {
+      const ch = String(r[c.chCol] ?? '').trim(); if (!ch) continue;
+      state.mapIssues.rows++;
+      const b = segToBucket(r[c.bkCol]), k = norm(ch);
+      if (!b) { state.mapIssues.bad.push(`${ch} (“${String(r[c.bkCol]).trim() || 'blank'}”)`); continue; }
+      if (state.mapBuckets.has(k) && state.mapBuckets.get(k) !== b) state.mapIssues.conflicts.push(ch);
+      state.mapBuckets.set(k, b);
+    }
+  }
+  refreshSetup();
+}
+const listNames = (a, n = 8) => esc(a.slice(0, n).join(', ')) + (a.length > n ? ` … +${a.length - n} more` : '');
+function renderMapCard() {
+  const card = $('#mapCard'), srcs = state.mapSources;
+  card.hidden = !srcs.length;
+  if (card.hidden) return;
+  const c = state.mapCfg, src = srcs[c.idx], hs = src ? headersOf(src.wb.Sheets[src.sheet]) : [];
+  const sel = (key, label, opts, val, none) => `<div><label>${label}</label><select data-mc="${key}"><option value="">${none}</option>${opts.map(([v, t]) => `<option value="${esc(v)}" ${String(val) === String(v) ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></div>`;
+  const notes = [];
+  const M = state.mapBuckets, chs = state.channels;
+  if (!src) notes.push('<span class="muted">No mapping sheet selected: buckets are auto-detected (any channel with spend is Paid).</span>');
+  else if (!c.chCol || !c.bkCol) notes.push('<span class="down">Pick the Channel and Bucket columns.</span>');
+  else {
+    notes.push(`Read <b>${M.size}</b> channel${M.size === 1 ? '' : 's'} from “${esc(src.sheet)}”.`);
+    if (state.mapIssues.bad.length) notes.push(`<span class="down">${state.mapIssues.bad.length} row${state.mapIssues.bad.length > 1 ? 's have' : ' has'} a bucket I don’t recognise (use Paid, Unpaid, Baseline or Promotions): ${listNames(state.mapIssues.bad)}.</span>`);
+    if (state.mapIssues.conflicts.length) notes.push(`<span class="down">Listed more than once with different buckets (the last one wins): ${listNames(state.mapIssues.conflicts)}.</span>`);
+    if (chs.size) {
+      const list = f => [...chs].filter(([k, ch]) => f(k, ch)).map(([, ch]) => ch.name);
+      const unlisted = list(k => !M.has(k)), stray = [...M.keys()].filter(k => !chs.has(k));
+      const noSpendPaid = list((k, ch) => M.get(k) === 'paid' && !ch.spend), spendNonPaid = list((k, ch) => M.has(k) && M.get(k) !== 'paid' && ch.spend);
+      const stale = list(k => M.has(k) && state.bucketOverrides[k] && state.bucketOverrides[k] !== M.get(k));
+      if (unlisted.length) notes.push(`<span class="down"><b>${unlisted.length}</b> channel${unlisted.length > 1 ? 's are' : ' is'} not in the mapping tab and fall back to auto-detect: ${listNames(unlisted)}.</span>`);
+      if (stale.length) notes.push(`<span class="down"><b>${stale.length}</b> saved manual pick${stale.length > 1 ? 's' : ''} override the mapping tab (${listNames(stale)}). Use “Clear manual overrides” below to follow the mapping.</span>`);
+      if (spendNonPaid.length) notes.push(`<span class="muted">Mapped Unpaid/Baseline but have spend: ${listNames(spendNonPaid)}.</span>`);
+      if (noSpendPaid.length) notes.push(`<span class="muted">Mapped Paid but have no spend: ${listNames(noSpendPaid)}.</span>`);
+      if (stray.length) notes.push(`<span class="muted">${stray.length} mapping row${stray.length > 1 ? 's match' : ' matches'} no channel in the data (check spelling): ${listNames(stray.map(k => k))}.</span>`);
+      if (!unlisted.length && !stale.length) notes.push('<span class="up">Every channel is covered by the mapping tab.</span>');
+    }
+  }
+  card.innerHTML = `<h2>Bucket mapping</h2>
+    <p class="hint">If your workbook has a mapping tab (a Channel column and a Bucket column of Paid / Unpaid / Baseline / Promotions), it decides each channel’s bucket. Channels it doesn’t list fall back to auto-detect and are flagged. Manual picks below still win.</p>
+    <div class="maprow">${sel('idx', 'Mapping sheet', srcs.map((x, i) => [String(i), x.label]), c.idx, '(none — auto-detect)')}${sel('chCol', 'Channel column', hs.map(h => [h, h]), c.chCol, 'Select…')}${sel('bkCol', 'Bucket column', hs.map(h => [h, h]), c.bkCol, 'Select…')}</div>
+    <div style="margin-top:10px;display:flex;flex-direction:column;gap:4px;font-size:13px">${notes.map(n => `<div>${n}</div>`).join('')}</div>`;
+}
+$('#mapCard').addEventListener('change', e => {
+  const k = e.target.dataset.mc; if (!k) return;
+  if (k === 'idx') state.mapCfg = e.target.value === '' ? { idx: '', chCol: '', bkCol: '' } : { idx: e.target.value, ...detectMapCols(state.mapSources[e.target.value]) };
+  else state.mapCfg[k] = e.target.value;
+  applyMapping();
+});
+
+function refreshSetup() {
+  // rebuild channel index from whichever files are ready
+  const ch = new Map();
+  for (const which of ['prod', 'remodel']) {
+    const f = state.files[which];
+    if (!f || !f.agg) continue;
+    for (const a of f.agg) {
+      const k = norm(a.ch);
+      let c = ch.get(k);
+      if (!c) ch.set(k, c = { name: a.ch, segs: {}, rev: { prod: 0, remodel: 0 }, present: { prod: false, remodel: false }, spend: 0 });
+      c.rev[which] += a.rev; c.spend += Math.abs(a.spend); c.present[which] = true;
+      const b = segToBucket(a.seg);
+      if (b) { c.segs[which] ??= {}; c.segs[which][b] = (c.segs[which][b] || 0) + Math.abs(a.rev) + 1e-9; }
+    }
+  }
+  for (const c of ch.values()) {
+    // prefer the remodel's segment tagging, fall back to prod; majority by |revenue|
+    const pick = w => c.segs[w] && Object.entries(c.segs[w]).sort((a, b) => b[1] - a[1])[0][0];
+    c.defaultSeg = pick('remodel') || pick('prod') || null;
+    c.segLabel = c.defaultSeg ? BUCKET_LABEL[c.defaultSeg] : '—';
+    c.defaultBucket = autoBucket(c);
+  }
+  state.channels = ch;
+  renderMapCard();
+  const any = ch.size > 0;
+  $('#bucketCard').hidden = !any; $('#outcomeCard').hidden = !any; $('#goRow').hidden = !any;
+  updateGo();
+  if (!any) return;
+  renderBucketTable(); renderOutcomeTable();
+}
+
+function renderBucketTable() {
+  const q = norm($('#bucketFilter').value);
+  const rows = [...state.channels.entries()].filter(([k, c]) => !q || k.includes(q)).sort((a, b) => Math.abs(b[1].rev.remodel) + Math.abs(b[1].rev.prod) - Math.abs(a[1].rev.remodel) - Math.abs(a[1].rev.prod));
+  $('#bucketTable').innerHTML = `<thead><tr><th>Channel</th><th>Prod revenue</th><th>Remodel revenue</th><th>Spend</th><th>Segment column</th><th style="text-align:left">Bucket</th><th style="text-align:left">Source</th></tr></thead><tbody>` +
+    rows.map(([k, c]) => {
+      const cur = bucketOf(k);
+      const only = !c.present.prod || !c.present.remodel ? ` <span class="muted" title="Only appears in ${c.present.prod ? 'Prod' : 'Remodel'}">(${c.present.prod ? 'Prod' : 'Remodel'} only)</span>` : '';
+      return `<tr data-k="${esc(k)}"><td><span class="dot b-${cur}"></span>${esc(c.name)}${only}</td>
+        <td class="num">${c.present.prod ? fmtMoney(c.rev.prod) : '—'}</td><td class="num">${c.present.remodel ? fmtMoney(c.rev.remodel) : '—'}</td>
+        <td class="num">${c.spend ? fmtMoney(c.spend) : '—'}</td><td class="muted">${c.segLabel}</td>
+        <td style="text-align:left"><select data-k="${esc(k)}" style="width:130px">${cur === 'unassigned' ? '<option value="" selected>Unassigned</option>' : ''}
+          ${BUCKETS.map(([v, l]) => `<option value="${v}" ${cur === v ? 'selected' : ''}>${l}</option>`).join('')}</select></td>
+        <td style="text-align:left" class="${state.mapBuckets.size && !state.mapBuckets.has(k) && !state.bucketOverrides[k] ? 'down' : 'muted'}">${bucketSource(k)}</td></tr>`;
+    }).join('') + '</tbody>';
+  const un = [...state.channels.keys()].filter(k => bucketOf(k) === 'unassigned').length;
+  const w = $('#bucketWarn');
+  w.hidden = !un;
+  w.textContent = un ? `${un} channel${un > 1 ? 's have' : ' has'} no bucket yet. They will show as “Unassigned” in the mix until you pick one.` : '';
+}
+
+function renderOutcomeTable() {
+  const raws = new Map();
+  for (const which of ['prod', 'remodel']) {
+    const f = state.files[which]; if (!f || !f.agg) continue;
+    for (const a of f.agg) { const k = norm(a.out); const e = raws.get(k) || { name: a.out, files: new Set() }; e.files.add(which); raws.set(k, e); }
+  }
+  $('#outcomeTable').innerHTML = `<thead><tr><th>Outcome (as in file)</th><th style="text-align:center">In files</th><th style="text-align:left">Compare as</th><th style="text-align:center">In total</th></tr></thead><tbody>` +
+    [...raws.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([k, e]) => `<tr>
+      <td>${esc(e.name)}</td><td style="text-align:center" class="muted">${[...e.files].map(w => w === 'prod' ? 'Prod' : 'Remodel').join(' + ')}</td>
+      <td><input type="text" data-k="${esc(k)}" value="${esc(outcomeLabel(e.name))}"></td>
+      <td style="text-align:center"><input type="checkbox" data-x="${esc(k)}" ${state.outcomeExclude[k] ? '' : 'checked'}></td></tr>`).join('') + '</tbody>';
+}
+
+function updateGo() {
+  const ready = state.files.prod?.agg && state.files.remodel?.agg;
+  $('#goBtn').disabled = !ready;
+  $('#goMsg').textContent = ready ? '' : 'Load and map both files to run the review.';
+}
+
+$('#bucketFilter').addEventListener('input', renderBucketTable);
+$('#bucketTable').addEventListener('change', e => {
+  if (e.target.dataset.k && e.target.tagName === 'SELECT' && e.target.value) { state.bucketOverrides[e.target.dataset.k] = e.target.value; persist(); renderBucketTable(); }
+});
+$('#bulkBucket').addEventListener('change', e => {
+  if (!e.target.value) return;
+  $('#bucketTable').querySelectorAll('tbody tr').forEach(tr => { state.bucketOverrides[tr.dataset.k] = e.target.value; });
+  e.target.value = ''; persist(); renderBucketTable();
+});
+$('#resetBuckets').addEventListener('click', () => { state.bucketOverrides = {}; persist(); renderBucketTable(); });
+$('#outcomeTable').addEventListener('change', e => {
+  const t = e.target;
+  if (t.dataset.k) { const v = t.value.trim(); if (v && v !== defaultOutcomeLabel(t.dataset.k)) state.outcomeGroups[t.dataset.k] = v; else delete state.outcomeGroups[t.dataset.k]; }
+  if (t.dataset.x) { if (t.checked) delete state.outcomeExclude[t.dataset.x]; else state.outcomeExclude[t.dataset.x] = true; }
+  persist();
+});
+
+/* ============================== analysis engine ============================== */
+/* Returns {rows:[{ch,tac,bucket,spend,rev}], has:boolean} for one file at the chosen category/outcome. */
+const hasCategorySplit = f => f.agg.some(a => norm(a.cat) !== 'all');
+/* strict: a specific category means exactly that category in this file (no falling back to its "All" rows when it has no category split). */
+function slice(which, cat, out, level, strict = false) {
+  const f = state.files[which];
+  let data = f.agg;
+  if (cat === '__all__') {
+    const withAll = new Set(data.filter(a => norm(a.cat) === 'all').map(a => norm(a.out)));
+    data = data.filter(a => norm(a.cat) === 'all' || !withAll.has(norm(a.out)));   // per outcome: use its own "All" rows if it has them, else sum its categories
+  } else if (!strict && !hasCategorySplit(f)) data = data.filter(a => norm(a.cat) === 'all');   // no category breakdown in this file: compare its "All" to the chosen category
+  else data = data.filter(a => norm(a.cat) === cat);
+  if (out === '__all__') data = data.filter(a => !state.outcomeExclude[norm(a.out)]);
+  else data = data.filter(a => norm(outcomeLabel(a.out)) === out);
+  const m = new Map(), spendBy = new Map();
+  for (const a of data) {
+    const key = level === 'tactic' ? norm(a.ch) + '\u0001' + norm(a.tac) : norm(a.ch);
+    let r = m.get(key);
+    if (!r) m.set(key, r = { key, ch: a.ch, tac: level === 'tactic' ? a.tac : null, chKey: norm(a.ch), spend: 0, rev: 0 });
+    r.rev += a.rev;
+    if (!f.spendRepeats) { r.spend += a.spend; continue; }
+    // spend repeats on each outcome/category row: count it once per channel+tactic (keep the largest)
+    const sk = norm(a.ch) + '|' + norm(a.tac), prev = spendBy.get(sk) ?? 0;
+    if (a.spend > prev) { r.spend += a.spend - prev; spendBy.set(sk, a.spend); }
+  }
+  const rows = [...m.values()].map(r => ({ ...r, bucket: bucketOf(r.chKey) }));
+  return { rows, has: rows.length > 0 };
+}
+
+function bucketTotals(rows) {
+  const t = { paid: 0, unpaid: 0, baseline: 0, unassigned: 0, total: 0, paidSpend: 0 };
+  for (const r of rows) { t[r.bucket] += r.rev; t.total += r.rev; if (r.bucket === 'paid') t.paidSpend += r.spend; }
+  return t;
+}
+const allOutcomes = () => {
+  const s = new Set();
+  for (const w of ['prod', 'remodel']) for (const a of state.files[w].agg) s.add(norm(outcomeLabel(a.out)));
+  return [...s].sort();
+};
+/* Outcomes that have rows in at least one file for this category, so the dropdown never leads to an empty view. */
+const outcomesFor = (cat, prodOnly = false) => allOutcomes().filter(o =>
+  slice('prod', cat, o, 'channel').has || (!prodOnly && slice('remodel', cat, o, 'channel').has));
+const allCategories = () => {
+  const s = new Map();
+  for (const w of ['prod', 'remodel']) for (const a of state.files[w].agg) if (norm(a.cat) !== 'all') s.set(norm(a.cat), a.cat);
+  return [...s.entries()].sort((a, b) => a[1].localeCompare(b[1]));
+};
+
+/* ============================== analysis UI ============================== */
+function setTab(tab) {
+  state.view.tab = tab;
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  $('#tab-setup').hidden = tab !== 'setup';
+  $('#tab-analysis').hidden = tab === 'setup';
+  $('.container').classList.toggle('wide', tab === 'detail' || tab === 'mix');   // two tables side by side need the room
+  if (tab !== 'setup') { syncFilters(); render(); }
+}
+$('#tabs').addEventListener('click', e => { const b = e.target.closest('.tab-btn'); if (b && !b.disabled) setTab(b.dataset.tab); });
+$('#goBtn').addEventListener('click', () => {
+  document.querySelectorAll('.tab-btn').forEach(b => b.disabled = false);
+  state.view.cat = '__all__'; state.view.out = '__all__';
+  setTab('mix');
+});
+
+function syncFilters() {
+  const v = state.view, cats = allCategories();
+  $('#fCat').innerHTML = `<option value="__all__">All categories (combined)</option>` + cats.map(([k, n]) => `<option value="${esc(k)}" ${v.cat === k ? 'selected' : ''}>${esc(n)}</option>`).join('');
+  $('#fCat').value = cats.some(([k]) => k === v.cat) ? v.cat : '__all__'; v.cat = $('#fCat').value;
+  const outs = outcomesFor(v.cat, v.tab === 'mix');   // the mix is anchored on Prod: it only offers outcomes that exist there
+  $('#fOut').innerHTML = `<option value="__all__">${v.tab === 'mix' ? 'All outcomes' : 'All outcomes (combined)'}</option>` + outs.map(o => `<option value="${esc(o)}">${esc(o)}</option>`).join('');
+  $('#fOut').value = outs.includes(v.out) ? v.out : '__all__'; v.out = $('#fOut').value;
+  const hasTactic = ['prod', 'remodel'].some(w => state.files[w].map.tactic);
+  $('#fLevelWrap').hidden = !hasTactic || v.tab === 'mix';
+  $('#fOutWrap').hidden = v.tab === 'detail';   // the detailed view shows outcomes as columns...
+  $('#fCatWrap').hidden = v.tab === 'detail';   // ...under product categories
+  if (!hasTactic) v.level = 'channel';
+  $('#fLevel').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.v === v.level));
+}
+$('#fCat').addEventListener('change', e => { state.view.cat = e.target.value; syncFilters(); render(); });
+$('#fOut').addEventListener('change', e => { state.view.out = e.target.value; render(); });
+$('#fLevel').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; state.view.level = b.dataset.v; syncFilters(); render(); });
+
+function scopeNote() {
+  const v = state.view, notes = [];
+  if (v.tab === 'detail') { $('#scopeNote').innerHTML = ''; return; }
+  if (v.tab === 'mix' || v.out === '__all__') {
+    notes.push(`“Combined” sums outcomes ticked <b>In total</b> in Setup.`);
+  }
+  if (v.cat === '__all__') notes.push('“All categories” uses each outcome’s own “All” rows where present, otherwise sums its categories.');
+  else for (const w of ['prod', 'remodel']) {
+    const name = w === 'prod' ? 'Prod' : 'Remodel';
+    if (!hasCategorySplit(state.files[w])) notes.push(`<b>${name}</b> has no product-category split, so its “All” rows are compared against this category.`);
+    else if (!slice(w, v.cat, '__all__', 'channel').has) notes.push(`<b>${name}</b> has no rows for this category.`);
+  }
+  $('#scopeNote').innerHTML = notes.join(' ');
+}
+
+function render() {
+  scopeNote();
+  const t = state.view.tab;
+  const hasTactic = ['prod', 'remodel'].some(w => state.files[w].map.tactic);
+  $('#filterCard').hidden = t === 'mix' || (t === 'detail' && !hasTactic);   // the mix has its own outcome checklist and shows every category as a section
+  $('#view').innerHTML = '';
+  ({ mix: renderMix, paid: renderPaid, detail: renderDetail })[t]();
+}
+
+/* ---------- 1. bucket mix ---------- */
+/* Same idea as the Detailed View: look at Prod and Remodel as two separate tables (slider: Prod | Both | Remodel).
+   Rows are buckets; the header is product categories, then outcomes. Each side has its own category and outcome checklists. */
+const COMBINED = '__all__';
+const MIX_METRICS = [['pct', '% of total revenue'], ['raw', 'Revenue']];
+
+function mixSideView(W) {
+  const v = state.view, file = SIDE_FILE[W], F = state.files[file], off = (v.mixOff[W] ||= {}), catOff = (v.mixCatOff[W] ||= {});
+  const raw = v.mixMetric === 'raw';
+  const catItems = [[COMBINED, 'All'], ...allCategories()].filter(([c]) => c === COMBINED ? F.agg.length : F.agg.some(a => norm(a.cat) === c));
+  const outItems = [[COMBINED, 'All outcomes (combined)'], ...allOutcomes().map(o => [o, o])].filter(([k]) => catItems.some(([c]) => slice(file, c, k, 'channel', true).has));
+  // a category is read strictly: exactly that category in this file
+  const groups = catItems.filter(([c]) => !catOff[c]).map(([c, name]) => ({
+    name, cols: outItems.filter(([k]) => !off[k]).map(([k, label]) => { const S = slice(file, c, k, 'channel', true); return S.has ? { label, t: bucketTotals(S.rows) } : null; }).filter(Boolean),
+  })).filter(g => g.cols.length);
+  const box = (attr, items, isOff) => items.map(([k, label]) => `<label style="display:inline-flex;gap:6px;align-items:center;font-weight:500;margin:0 16px 6px 0;text-transform:none;letter-spacing:0"><input type="checkbox" data-mw="${W}" ${attr}="${esc(k)}" ${isOff[k] ? '' : 'checked'}>${esc(label)}</label>`).join('');
+  const bar = (name, attr) => `<div class="filters" style="align-items:center"><label style="margin:0">${name}</label><button class="btn" data-mw="${W}" ${attr}-all="1">Select all</button><button class="btn" data-mw="${W}" ${attr}-all="0">Clear</button></div>`;
+  const head = `<div style="padding:14px 16px 12px"><h3 style="margin:0 0 10px">${SIDE_NAME[W]}</h3>${bar('Categories', 'data-mc')}<div style="margin:8px 0 12px">${box('data-mc', catItems, catOff)}</div>${bar('Outcomes', 'data-mo')}<div style="margin-top:8px">${box('data-mo', outItems, off) || '<span class="muted">No outcomes in this file.</span>'}</div></div>`;
+  if (!catItems.length || !outItems.length) return { html: `<div class="card" style="padding:0">${head}<div class="empty">${SIDE_NAME[W]} has no rows.</div></div>`, catItems, outItems };
+  const cols = groups.flatMap(g => g.cols);
+  const kinds = ['paid', 'unpaid', 'baseline', 'unassigned'].filter(b => b !== 'unassigned' || cols.some(c => c.t.unassigned));
+  const cell = (c, b) => raw ? fmtMoney(c.t[b]) : fmtPct(div(c.t[b], c.t.total));
+  const cells = fn => groups.map(g => g.cols.map((c, ci) => `<td class="num ${ci ? '' : 'sepl'}">${fn(c)}</td>`).join('')).join('');
+  const table = !cols.length ? '<div class="empty">Check at least one category and outcome.</div>' : `<h3 style="padding:0 16px;margin:0 0 8px">${raw ? 'Revenue' : '% of total revenue'}</h3><div class="tablewrap"><table class="dtable"><thead>
+      <tr><th rowspan="2">Bucket</th>${groups.map(g => `<th colspan="${g.cols.length}" class="grp sepl">${esc(g.name)}</th>`).join('')}</tr>
+      <tr>${groups.map(g => g.cols.map((c, ci) => `<th class="${ci ? '' : 'sepl'}">${esc(c.label)}</th>`).join('')).join('')}</tr></thead>
+      <tbody>${kinds.map(b => `<tr><td><span class="dot b-${b}"></span>${BUCKET_LABEL[b]}</td>${cells(c => cell(c, b))}</tr>`).join('')}
+      <tr class="total"><td>Total revenue</td>${cells(c => fmtMoney(c.t.total))}</tr></tbody></table></div>`;
+  return { html: `<div class="card" style="padding:0">${head}${table}</div>`, catItems, outItems };
+}
+
+function renderMix() {
+  const v = state.view, V = { P: mixSideView('P'), R: mixSideView('R') };
+  $('#view').innerHTML = `<div class="card"><div class="filters">
+      <div><label>View</label><div class="vslider" id="mixSlider"><span class="thumb" style="transform:translateX(${MODES.indexOf(v.mixMode) * 100}%)"></span>${MODES.map(m => `<button data-m="${m}" class="${m === v.mixMode ? 'on' : ''}">${{ prod: 'Prod', both: 'Both', remodel: 'Remodel' }[m]}</button>`).join('')}</div></div>
+      <div><label>Values</label><div class="seg" id="mixMetric">${MIX_METRICS.map(([m, l]) => `<button data-v="${m}" class="${m === v.mixMetric ? 'on' : ''}">${l}</button>`).join('')}</div></div></div>
+    <p class="hint" style="margin:10px 0 0">Each bucket’s share of total revenue, for Prod and Remodel as two separate tables. Use the View slider to look at <b>Prod</b> or <b>Remodel</b> on its own, or <b>Both</b> side by side (stacked on narrow screens). Product categories run across the top with the outcomes under each, and each side has its own category and outcome checklists. A category is compared only against the same category in its own file. “All outcomes (combined)” sums outcomes ticked <b>In total</b> in Setup. The Total revenue row shows the dollar size of each column.</p></div>
+    <div class="slide" id="mixSlide" data-mode="${v.mixMode}">${V.P.html}${V.R.html}</div>`;
+  $('#mixSlider').addEventListener('click', e => {   // no re-render, so the CSS transition can play
+    const b = e.target.closest('button'); if (!b) return;
+    v.mixMode = b.dataset.m; $('#mixSlide').dataset.mode = v.mixMode;
+    $('#mixSlider .thumb').style.transform = `translateX(${MODES.indexOf(v.mixMode) * 100}%)`;
+    $('#mixSlider').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
+  });
+  $('#mixMetric').addEventListener('click', e => { const b = e.target.closest('button'); if (b) { v.mixMetric = b.dataset.v; renderMix(); } });
+  const tick = (attr, store, itemsOf) => {
+    $('#view').querySelectorAll(`[${attr}]`).forEach(cb => cb.addEventListener('change', () => { const o = (store[cb.dataset.mw] ||= {}), k = cb.getAttribute(attr); if (cb.checked) delete o[k]; else o[k] = true; renderMix(); }));
+    $('#view').querySelectorAll(`[${attr}-all]`).forEach(b => b.addEventListener('click', () => { const W = b.dataset.mw; store[W] = b.getAttribute(attr + '-all') === '1' ? {} : Object.fromEntries(itemsOf(W).map(([k]) => [k, true])); renderMix(); }));
+  };
+  tick('data-mo', v.mixOff, W => V[W].outItems); tick('data-mc', v.mixCatOff, W => V[W].catItems);
+}
+
+/* ---------- 2. paid contribution ---------- */
+/* One side of the table: paid channels ranked by revenue. Shares are of PAID spend / PAID revenue (not total revenue). */
+function paidSide(S) {
+  const rows = S.rows.filter(r => r.bucket === 'paid' && (r.rev !== 0 || r.spend !== 0));
+  const totRev = rows.reduce((t, r) => t + r.rev, 0), totSpend = rows.reduce((t, r) => t + r.spend, 0);
+  const list = rows.map(r => ({ name: r.tac ? `${r.ch} › ${r.tac}` : r.ch, spend: r.spend, rev: r.rev, spendShare: div(r.spend, totSpend), revShare: div(r.rev, totRev) }))
+    .sort((a, b) => (b.revShare ?? -Infinity) - (a.revShare ?? -Infinity));
+  return { list, totRev, totSpend };
+}
+
+function renderPaid() {
+  const v = state.view, P = slice('prod', v.cat, v.out, v.level), R = slice('remodel', v.cat, v.out, v.level);
+  if (!P.has && !R.has) { $('#view').innerHTML = '<div class="empty">No data for this selection.</div>'; return; }
+  const raw = v.paidMode === 'raw';
+  const sp = paidSide(P), sr = paidSide(R), n = Math.max(sp.list.length, sr.list.length), shown = v.topN ? Math.min(v.topN, n) : n;
+  const spendOf = e => raw ? fmtMoney(e.spend) : fmtPct(e.spendShare), revOf = e => raw ? fmtMoney(e.rev) : fmtPct(e.revShare);
+  const cells = (e, i, cls = '') => e
+    ? `<td class="num ${cls}"><span class="rank">${i + 1}</span></td><td class="wrap">${esc(e.name)}</td><td class="num">${spendOf(e)}</td><td class="num">${revOf(e)}</td>`
+    : `<td class="${cls}"></td><td></td><td></td><td></td>`;
+  let body = '';
+  for (let i = 0; i < shown; i++) body += `<tr>${cells(sp.list[i], i)}${cells(sr.list[i], i, 'sepl')}</tr>`;
+  const total = (has, t, cls = '') => has
+    ? `<td class="${cls}"></td><td>Paid total</td><td class="num">${raw ? fmtMoney(t.totSpend) : fmtPct(1)}</td><td class="num">${raw ? fmtMoney(t.totRev) : fmtPct(1)}</td>`
+    : `<td class="${cls}"></td><td></td><td></td><td></td>`;
+  const lvl = v.level === 'tactic' ? 'Channel › tactic' : 'Channel';
+  const sh = raw ? ['Spend', 'Revenue'] : ['% of paid spend', '% of paid revenue'];
+  $('#view').innerHTML = `<div class="card"><div class="filters">
+      <div><label>Values</label><div class="seg" id="paidMode"><button data-v="pct" class="${raw ? '' : 'on'}">Percentages</button><button data-v="raw" class="${raw ? 'on' : ''}">Raw numbers</button></div></div>
+      <div><label>Show</label><select id="topN">${[10, 15, 25, 50, 0].map(k => `<option value="${k}" ${v.topN === k ? 'selected' : ''}>${k ? 'Top ' + k : 'All'}</option>`).join('')}</select></div>
+      <div class="hint" style="margin:0;flex:1">Paid channels only, ranked by their share of <b>paid media</b> revenue (not total revenue). Prod and Remodel are ranked independently, so a row pairs the Nth channel on each side. Showing ${shown} of ${n}.</div></div></div>
+    <div class="card" style="padding:0"><div class="tablewrap"><table><thead>
+      <tr><th colspan="4" class="grp">Prod</th><th colspan="4" class="grp sepl">Remodel</th></tr>
+      <tr><th>#</th><th>${lvl}</th><th>${sh[0]}</th><th>${sh[1]}</th><th class="sepl">#</th><th>${lvl}</th><th>${sh[0]}</th><th>${sh[1]}</th></tr>
+      </thead><tbody>${body || '<tr><td colspan="8" class="empty">No paid channels. Check bucket assignments in Setup.</td></tr>'}
+      <tr class="total">${total(P.has, sp)}${total(R.has, sr, 'sepl')}</tr></tbody></table></div></div>`;
+  $('#paidMode').addEventListener('click', e => { const b = e.target.closest('button'); if (b) { v.paidMode = b.dataset.v; renderPaid(); } });
+  $('#topN').addEventListener('change', e => { v.topN = +e.target.value; renderPaid(); });
+}
+
+/* ---------- 3. detailed view ---------- */
+/* One row per channel. Prod and Remodel are the top-level groups; each has its own outcome checklist and its own outcome columns. */
+const DETAIL_METRICS = [['spend', 'Spend'], ['rev', 'Revenue'], ['share', '% of total revenue'], ['roas', 'iROAS']];
+const fmtMetric = (m, v) => v == null ? '—' : m === 'share' ? fmtPct(v) : m === 'roas' ? fmtX(v) : fmtMoney(v);
+const MODES = ['prod', 'both', 'remodel'];
+const SIDE_NAME = { P: 'Prod', R: 'Remodel' }, SIDE_FILE = { P: 'prod', R: 'remodel' };
+
+/* One file's rows for one (category, outcome), keyed by channel[/tactic]. Categories are read strictly: a category means exactly that category in this file.
+   Share is against ALL buckets for that outcome and category. */
+function sideCol(W, cat, catName, k, label) {
+  const S = slice(SIDE_FILE[W], cat, k, state.view.level, true), tot = bucketTotals(S.rows).total, rows = new Map();
+  for (const r of S.rows) rows.set(r.key, { name: r.tac ? `${r.ch} › ${r.tac}` : r.ch, bucket: r.bucket, spend: r.spend, rev: r.rev, share: div(r.rev, tot), roas: r.spend ? r.rev / r.spend : null });
+  return { id: cat + '|' + k, cat, catName, k, label, has: S.has, tot, rows };
+}
+
+/* One version's table. Header: product categories, then (per category) Spend and that category's outcomes.
+   Only channels with spend or revenue in THIS file for the ticked categories/outcomes are listed. */
+function detailSideView(W) {
+  const v = state.view, file = SIDE_FILE[W], off = (v.detailOff[W] ||= {}), catOff = (v.detailCatOff[W] ||= {});
+  const st = v.dsort[W], metric = v.detailMetric, mLabel = DETAIL_METRICS.find(([m]) => m === metric)[1];
+  const F = state.files[file];
+  const catItems = [[COMBINED, 'All'], ...allCategories()].filter(([c]) => c === COMBINED ? F.agg.length : F.agg.some(a => norm(a.cat) === c));
+  const outItems = allOutcomes().map(o => [o, o]).filter(([k]) => catItems.some(([c]) => slice(file, c, k, v.level, true).has));
+  // Spend and iROAS are per channel (all outcomes, so unticked outcomes don't change them) and follow the ticked categories:
+  // "All" ticked = everything; otherwise the specific ticked categories are summed (so nothing is counted twice).
+  const allOn = !catOff[COMBINED] && catItems.some(([c]) => c === COMBINED);
+  const scopeCats = allOn ? catItems.filter(([c]) => c === COMBINED) : catItems.filter(([c]) => c !== COMBINED && !catOff[c]);
+  const scopeLabel = allOn ? 'all categories' : scopeCats.map(([, n]) => n).join(' + ') || 'none';
+  // If the file repeats a channel's total spend on every category row (the Setup checkbox), that spend must be counted once across
+  // categories (take the largest), not added up; revenue is always split by category, so it is summed.
+  const grand = new Map();
+  for (const [c] of scopeCats) for (const r of slice(file, c, COMBINED, v.level, true).rows) {
+    const g = grand.get(r.key) || { spend: 0, rev: 0 };
+    g.spend = F.spendRepeats ? Math.max(g.spend, r.spend) : g.spend + r.spend; g.rev += r.rev; grand.set(r.key, g);
+  }
+  const spendOf = new Map([...grand].map(([k, g]) => [k, g.spend])), revOf = new Map([...grand].map(([k, g]) => [k, g.rev]));
+  const roasOf = r => spendOf.get(r.key) ? revOf.get(r.key) / spendOf.get(r.key) : null;
+  const cgroups = catItems.filter(([c]) => !catOff[c]).map(([c, name]) => ({
+    cat: c, name,
+    cols: outItems.filter(([k]) => !off[k]).map(([k, label]) => sideCol(W, c, name, k, label)).filter(x => x.has),
+  })).filter(g => g.cols.length);
+  const cols = cgroups.flatMap(g => g.cols);
+  const box = (attr, items, isOff) => items.map(([k, label]) => `<label style="display:inline-flex;gap:6px;align-items:center;font-weight:500;margin:0 16px 6px 0;text-transform:none;letter-spacing:0"><input type="checkbox" data-dw="${W}" ${attr}="${esc(k)}" ${isOff[k] ? '' : 'checked'}>${esc(label)}</label>`).join('');
+  const bar = (name, attr) => `<div class="filters" style="align-items:center"><label style="margin:0">${name}</label><button class="btn" data-dw="${W}" ${attr}-all="1">Select all</button><button class="btn" data-dw="${W}" ${attr}-all="0">Clear</button></div>`;
+  const checklist = `${bar('Categories', 'data-dc')}<div style="margin:8px 0 12px">${box('data-dc', catItems, catOff)}</div>${bar('Outcomes', 'data-do')}<div style="margin-top:8px">${box('data-do', outItems, off) || '<span class="muted">No outcomes in this file.</span>'}</div>`;
+  const head = `<div style="padding:14px 16px 12px"><h3 style="margin:0 0 10px">${SIDE_NAME[W]}</h3>${checklist}</div>`;
+  if (!catItems.length || !outItems.length) return { html: `<div class="card" style="padding:0">${head}<div class="empty">${SIDE_NAME[W]} has no rows.</div></div>`, list: [], cols, outItems, catItems, n: 0, shown: 0 };
+
+  const q = norm($('#detailSearch')?.value || '');
+  const rowMap = new Map();
+  for (const c of cols) for (const [key, e] of c.rows) if ((e.spend || e.rev) && !rowMap.has(key)) rowMap.set(key, { key, name: e.name, bucket: e.bucket });
+  const list = [...rowMap.values()].filter(r => (v.bucketFilter === 'all' || r.bucket === v.bucketFilter) && (!q || norm(r.name).includes(q)));
+  const sc = cols.find(c => c.id === st.k) || cols[0];
+  const val = r => st.key === 'name' ? r.name.toLowerCase() : st.key === 'spend' ? spendOf.get(r.key) ?? null : st.key === 'roas' ? roasOf(r) : sc?.rows.get(r.key)?.[metric] ?? null;
+  list.sort((a, b) => { const x = val(a), y = val(b); if (x == null && y == null) return 0; if (x == null) return 1; if (y == null) return -1; return (x < y ? -1 : x > y ? 1 : 0) * st.dir; });
+  // rows are grouped by bucket; the sort applies within each group, and "Show" limits each group
+  const groups = ['paid', 'unpaid', 'baseline', 'unassigned'].map(b => { const all = list.filter(r => r.bucket === b); return { b, all, rows: v.detailN ? all.slice(0, v.detailN) : all }; }).filter(g => g.all.length);
+  const n = list.length, shown = groups.reduce((t, g) => t + g.rows.length, 0);
+  const dirMark = ' ' + (st.dir > 0 ? '▲' : '▼');
+  const lvl = v.level === 'tactic' ? 'Channel › tactic' : 'Channel';
+  const total = (c, rowsIn) => {
+    let spend = 0, rev = 0, paidRev = 0;
+    for (const r of rowsIn) { const e = c.rows.get(r.key); if (e) { spend += e.spend; rev += e.rev; if (e.bucket === 'paid') paidRev += e.rev; } }
+    return { spend, rev, share: div(rev, c.tot), roas: div(paidRev, spend) };   // total iROAS uses paid revenue only
+  };
+  const nCols = 3 + cols.length;
+  const cells = colFn => cgroups.map(g => g.cols.map((c, ci) => `<td class="num ${ci ? '' : 'sepl'}">${colFn(c)}</td>`).join('')).join('');
+  const lineRoas = (rowsIn, paidOnly) => { const sp = rowsIn.reduce((t, r) => t + (spendOf.get(r.key) || 0), 0); return div(rowsIn.filter(r => !paidOnly || r.bucket === 'paid').reduce((t, r) => t + (revOf.get(r.key) || 0), 0), sp); };
+  const line = (label, rowsIn, cls, paidOnly) => `<tr class="${cls}"><td class="wrap">${label}</td><td class="num">${fmtMoney(rowsIn.reduce((t, r) => t + (spendOf.get(r.key) || 0), 0))}</td><td class="num">${fmtX(lineRoas(rowsIn, paidOnly))}</td>${cells(c => fmtMetric(metric, total(c, rowsIn)[metric]))}</tr>`;
+  const body = groups.map(g => line(`<span class="dot b-${g.b}"></span>${BUCKET_LABEL[g.b]} <span class="muted">(${g.rows.length}${g.rows.length < g.all.length ? ' of ' + g.all.length : ''})</span>`, g.all, 'section')   // the group line carries the bucket subtotal (always all its rows)
+    + g.rows.map(r => `<tr><td class="wrap">${esc(r.name)}</td><td class="num">${fmtMoney(spendOf.get(r.key))}</td><td class="num">${fmtX(roasOf(r))}</td>${cells(c => fmtMetric(metric, c.rows.get(r.key)?.[metric]))}</tr>`).join('')).join('');
+  const table = !cols.length ? '<div class="empty">Check at least one category and outcome.</div>' : `<h3 style="padding:0 16px;margin:0 0 8px">${mLabel} <span class="muted" style="font-weight:500;font-size:12px">· Spend &amp; iROAS: ${esc(scopeLabel)}</span></h3><div class="tablewrap"><table class="dtable"><thead>
+      <tr><th rowspan="2" class="sortable" data-sort="name" data-ss="${W}">${lvl}${st.key === 'name' ? dirMark : ''}</th><th rowspan="2" class="sortable" data-sort="spend" data-ss="${W}">Spend${st.key === 'spend' ? dirMark : ''}</th><th rowspan="2" class="sortable" data-sort="roas" data-ss="${W}" title="Total revenue ÷ spend for the ticked categories (all outcomes)">iROAS${st.key === 'roas' ? dirMark : ''}</th>${cgroups.map(g => `<th colspan="${g.cols.length}" class="grp sepl">${esc(g.name)}</th>`).join('')}</tr>
+      <tr>${cgroups.map(g => g.cols.map((c, ci) => `<th class="sortable ${ci ? '' : 'sepl'}" data-sk="${esc(c.id)}" data-ss="${W}">${esc(c.label)}${st.key === 'val' && sc === c ? dirMark : ''}</th>`).join('')).join('')}</tr>
+      </thead><tbody>${body || `<tr><td colspan="${nCols}" class="empty">No channels match.</td></tr>`}
+      ${line(`Total (${n} channels)`, list, 'total', true)}</tbody></table></div>`;
+  return { html: `<div class="card" style="padding:0">${head}${table}</div>`, list, cols, outItems, catItems, n, shown };
+}
+
+function renderDetail() {
+  const v = state.view;
+  const V = { P: detailSideView('P'), R: detailSideView('R') };
+  const focus = document.activeElement?.id === 'detailSearch' ? document.activeElement.selectionStart : null;
+  $('#view').innerHTML = `<div class="card"><div class="filters">
+      <div style="flex:1"><label>Search</label><input type="text" id="detailSearch" placeholder="Filter by channel…" value="${esc($('#detailSearch')?.value || '')}"></div>
+      <div><label>Bucket</label><select id="bucketSel"><option value="all">All buckets</option>${[...BUCKETS, ['unassigned', 'Unassigned']].map(([b, l]) => `<option value="${b}" ${v.bucketFilter === b ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+      <div><label>Show</label><select id="detailN">${[15, 25, 50, 0].map(k => `<option value="${k}" ${v.detailN === k ? 'selected' : ''}>${k ? 'Top ' + k : 'All'}</option>`).join('')}</select></div>
+      <div><button class="btn" id="exportCsv">Export CSV</button></div></div>
+    <div class="filters" style="margin-top:12px"><div><label>View</label><div class="vslider" id="vslider"><span class="thumb" style="transform:translateX(${MODES.indexOf(v.detailMode) * 100}%)"></span>${MODES.map(m => `<button data-m="${m}" class="${m === v.detailMode ? 'on' : ''}">${{ prod: 'Prod', both: 'Both', remodel: 'Remodel' }[m]}</button>`).join('')}</div></div>
+    <div><label>Metric tab</label><div class="seg" id="detailMetric">${DETAIL_METRICS.filter(([m]) => m !== 'spend').map(([m, l]) => `<button data-v="${m}" class="${m === v.detailMetric ? 'on' : ''}">${l}</button>`).join('')}</div></div></div>
+    <p class="hint" style="margin:10px 0 0">Prod and Remodel are separate tables. Use the View slider to show <b>Prod</b> or <b>Remodel</b> full width, or <b>Both</b> side by side (stacked on narrow screens): each lists only the channels that have spend or revenue in its own file for the outcomes ticked, and each has its own outcome checklist and sorting. Rows are grouped by bucket (sorted within each group). Each group line shows that bucket’s subtotal, and “Show” limits the rows listed under it; subtotals and the total always cover every row. Pick a metric tab (Revenue, % of total revenue or iROAS): the table title shows which one, each outcome is a column, and Spend and iROAS (total revenue ÷ spend) are shown once per channel, from the combined view. Click a column header to sort. The CSV export always includes all four metrics. iROAS = revenue ÷ spend. % of total revenue is measured against all buckets for that outcome and category. Showing Prod ${V.P.shown} of ${V.P.n} · Remodel ${V.R.shown} of ${V.R.n}.</p></div><div class="slide" id="slide" data-mode="${v.detailMode}">${V.P.html}${V.R.html}</div>`;
+  const sIn = $('#detailSearch'); if (focus != null) { sIn.focus(); sIn.setSelectionRange(focus, focus); }
+  sIn.addEventListener('input', renderDetail);
+  $('#detailMetric').addEventListener('click', e => { const b = e.target.closest('button'); if (b) { v.detailMetric = b.dataset.v; renderDetail(); } });
+  $('#vslider').addEventListener('click', e => {   // no re-render, so the CSS transition can play
+    const b = e.target.closest('button'); if (!b) return;
+    v.detailMode = b.dataset.m; $('#slide').dataset.mode = v.detailMode;
+    $('#vslider .thumb').style.transform = `translateX(${MODES.indexOf(v.detailMode) * 100}%)`;
+    $('#vslider').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
+  });
+  $('#bucketSel').addEventListener('change', e => { v.bucketFilter = e.target.value; renderDetail(); });
+  $('#detailN').addEventListener('change', e => { v.detailN = +e.target.value; renderDetail(); });
+  $('#exportCsv').addEventListener('click', () => exportCsv(V));
+  const tick = (attr, store) => {
+    $('#view').querySelectorAll(`[${attr}]`).forEach(cb => cb.addEventListener('change', () => { const o = (store[cb.dataset.dw] ||= {}), k = cb.getAttribute(attr); if (cb.checked) delete o[k]; else o[k] = true; renderDetail(); }));
+    $('#view').querySelectorAll(`[${attr}-all]`).forEach(b => b.addEventListener('click', () => { const W = b.dataset.dw, items = attr === 'data-do' ? V[W].outItems : V[W].catItems; store[W] = b.getAttribute(attr + '-all') === '1' ? {} : Object.fromEntries(items.map(([k]) => [k, true])); renderDetail(); }));
+  };
+  tick('data-do', v.detailOff); tick('data-dc', v.detailCatOff);
+  $('#view').querySelectorAll('[data-sort]').forEach(h => h.addEventListener('click', () => { const W = h.dataset.ss, st = v.dsort[W], key = h.dataset.sort; const k = h.dataset.sc ?? null; v.dsort[W] = { key, k, dir: st.key === key && st.k === k ? -st.dir : (key === 'name' ? 1 : -1) }; renderDetail(); }));
+  $('#view').querySelectorAll('[data-sk]').forEach(h => h.addEventListener('click', () => {
+    const W = h.dataset.ss, st = v.dsort[W], same = st.key === 'val' && st.k === h.dataset.sk;
+    v.dsort[W] = { key: 'val', k: h.dataset.sk, dir: same ? -st.dir : -1 }; renderDetail();
+  }));
+}
+
+/* Long export: one row per channel per version, with every metric for each outcome ticked on that side (all rows matching the filters, not just the ones on screen). */
+function exportCsv(V) {
+  const outs = new Map();
+  for (const W of ['P', 'R']) for (const c of V[W].cols) outs.set(c.id, `${c.catName} · ${c.label}`);
+  const heads = ['Version', 'Channel', 'Bucket'];
+  for (const [, label] of outs) for (const [, l] of DETAIL_METRICS) heads.push(`${label} · ${l}`);
+  const q = x => x == null ? '' : typeof x === 'number' ? x : `"${String(x).replace(/"/g, '""')}"`;
+  const lines = [heads.map(q).join(',')];
+  for (const W of ['P', 'R']) for (const r of V[W].list) {
+    const row = [SIDE_NAME[W], r.name, BUCKET_LABEL[r.bucket]];
+    for (const id of outs.keys()) { const e = V[W].cols.find(c => c.id === id)?.rows.get(r.key); for (const [m] of DETAIL_METRICS) row.push(e?.[m] ?? null); }
+    lines.push(row.map(q).join(','));
+  }
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv' })); a.download = 'remodel_review_detail.csv'; a.click();
+}
+
+/* ============================== boot ============================== */
+$('#uploadInput').addEventListener('change', e => e.target.files.length && loadUpload([...e.target.files]));
+renderSlot('prod'); renderSlot('remodel');
+</script>
+</body>
+</html>
