@@ -15,7 +15,7 @@
       --paid: #14b8a6; --unpaid: #8b5cf6; --baseline: #94a3b8; --unassigned: #f59e0b;
       --up: #0f9488; --down: #e11d48;
     }
-    * { box-sizing: border-box; }
+    * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }   /* keeps colored pills/toggles/dots intact when printing instead of the browser stripping them to save ink */
     body { margin: 0; padding: 28px 20px 60px; background: var(--bg); color: var(--text); font: 14px/1.45 "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif; -webkit-font-smoothing: antialiased; }
     .container { max-width: 1280px; margin: 0 auto; }
     h1 { margin: 0 0 4px; font-size: 20px; }
@@ -106,7 +106,9 @@
     .ddown[open] summary { border-bottom: 1px solid var(--border); }
     .ddown-panel { max-height: 260px; overflow: auto; padding: 10px 12px; }
     #ccCard summary::-webkit-details-marker { display: none; }
-    #printRoot { display: none; }
+    /* Kept off-screen (not display:none) so its real width/height are measurable — shrinkTablesToFit() needs
+       that to scale wide tables down before printing. Fixed width approximates the printable page content area. */
+    #printRoot { position: fixed; left: -99999px; top: 0; width: 1000px; background: var(--bg); }
     .print-cover { padding: 20px 0 10px; }
     .print-cover h1 { margin: 0 0 6px; font-size: 24px; }
     .print-cover p { margin: 2px 0; color: var(--muted); }
@@ -115,11 +117,10 @@
     @page { size: landscape; margin: 12mm; }
     @media print {
       body > *:not(#printRoot) { display: none !important; }
-      #printRoot { display: block !important; }
+      #printRoot { position: static; left: auto; width: auto; }
       .print-section { page-break-before: always; }
-      .card { box-shadow: none; break-inside: avoid; }
-      .tablewrap, .tablewrap.short { max-height: none !important; overflow: visible !important; }
-      button, select, input, .ddown, .filters, .setup-actions { display: none !important; }   /* config controls — the tables already reflect whatever was picked; notes (textarea) stay visible */
+      .card { box-shadow: none; }   /* only the drop-shadow goes — everything else (buttons, toggles, dropdowns, tables) prints exactly as shown on screen */
+      .tablewrap, .tablewrap.short { max-height: none !important; overflow: visible !important; }   /* the full table, not just what fit in the on-screen scroll area */
       th { position: static; }   /* sticky headers don't paginate well */
     }
   </style>
@@ -246,6 +247,7 @@ const FIELDS = [
 const SLOTS = { prod: { title: 'Prod data', sub: 'What came before', sheet: 'prod_data' }, remodel: { title: 'Remodel data', sub: 'What exists now', sheet: 'remodel_data' } };
 const state = {
   sources: [],
+  isWorkingCopy: false,   // true once opened from an exported working copy — keeps the Setup tab hidden across reloads too
   files: { prod: null, remodel: null },      // {name, wb, sheet, rows, headers, map, agg, skipped}
   mapSources: [], mapCfg: { idx: '', chCol: '', bkCol: '' }, mapBuckets: new Map(), mapIssues: { rows: 0, bad: [], conflicts: [] },   // bucket mapping tab (per upload)
   bucketOverrides: {}, outcomeGroups: {}, outcomeExclude: {}, channelFlags: {}, channelChanges: [],
@@ -268,7 +270,7 @@ const persist = () => {
     const payload = {
       bucketOverrides: state.bucketOverrides, outcomeGroups: state.outcomeGroups, outcomeExclude: state.outcomeExclude,
       channelFlags: state.channelFlags, channelChanges: state.channelChanges, notes: state.notes,
-      mapBuckets: [...state.mapBuckets], viewTab: state.view.tab,
+      mapBuckets: [...state.mapBuckets], viewTab: state.view.tab, isWorkingCopy: state.isWorkingCopy,
     };
     // Only save file data once both sides are fully aggregated — never a half-loaded state, and never overwrite
     // a previously-saved complete setup with an in-progress one.
@@ -1473,18 +1475,38 @@ $('#exportReportBtn').addEventListener('click', exportWorkingCopy);
    PDF writer, so this stays dependency-free. Reuses the real render*() functions (rather than re-deriving the
    numbers) so what's in the PDF always matches what's on screen; only the tab you were on is left visible
    afterward, so nothing about the live page changes from the reader's point of view. */
+/* Scales down any table wider than the space it's actually laid out in (e.g. a Prod/Remodel table with many
+   outcome columns, squeezed into half a landscape page) so it fits on the page intact rather than getting cut
+   off at the edge. Measures each .tablewrap's real rendered width (which already reflects any side-by-side
+   layout), so a table only shrinks as much as it needs to. */
+function shrinkTablesToFit(root) {
+  root.querySelectorAll('.tablewrap').forEach(wrap => {
+    const table = wrap.querySelector('table');
+    if (!table) return;
+    const avail = wrap.clientWidth, full = table.scrollWidth;
+    if (full <= avail) return;
+    const scale = avail / full;
+    table.style.transform = `scale(${scale})`;
+    table.style.transformOrigin = 'top left';
+    // scale() doesn't shrink the box the table occupies in the flow, so pin the wrapper to the scaled size —
+    // !important because the print stylesheet resets .tablewrap's overflow/height for tables that DIDN'T need
+    // shrinking (so their full row list isn't clipped to the on-screen scroll height), and would otherwise win
+    // over a plain inline style here and let the unscaled table spill past its visible bounds.
+    wrap.style.setProperty('height', (table.scrollHeight * scale) + 'px', 'important');
+    wrap.style.setProperty('overflow', 'hidden', 'important');
+  });
+}
 function exportPdf() {
-  const v = state.view;
-  const originalTab = v.tab, originalMixMode = v.mixMode, originalDetailMode = v.detailMode, originalBucketCollapsed = v.detailBucketCollapsed;
-  // Force everything open/expanded for the PDF, regardless of what's collapsed or single-sided on screen —
-  // a report should show the full picture, not whatever was convenient to look at moments ago.
-  v.mixMode = 'both'; v.detailMode = 'both'; v.detailBucketCollapsed = {};
+  const v = state.view, originalTab = v.tab;
+  // Every tab is captured exactly as it currently renders — same View/Values toggles, same ticked
+  // Categories/Outcomes, same collapsed sections, same sort — a faithful mirror of what's on screen, not a
+  // separately-styled report.
   const TABS = [['mix', '1 · Bucket Mix'], ['paid', '2 · Paid Contribution'], ['detail', '3 · Detailed View'], ['compare', '4 · Comparison']];
   const sections = TABS.map(([tab, label]) => {
     v.tab = tab; syncFilters(); render();
     return `<section class="print-section"><h2>${esc(label)}</h2>${$('#view').innerHTML}</section>`;
   });
-  v.tab = originalTab; v.mixMode = originalMixMode; v.detailMode = originalDetailMode; v.detailBucketCollapsed = originalBucketCollapsed;
+  v.tab = originalTab;
   if (originalTab !== 'setup') { syncFilters(); render(); }   // restore the live page before anything paints; render() only applies to the analysis tabs
   let root = document.getElementById('printRoot');
   if (!root) { root = document.createElement('div'); root.id = 'printRoot'; document.body.appendChild(root); }
@@ -1493,7 +1515,8 @@ function exportPdf() {
       <p>Prod: ${esc(state.files.prod.name)} · Remodel: ${esc(state.files.remodel.name)}</p>
       ${state.notes.setup ? `<p class="print-notes">${esc(state.notes.setup)}</p>` : ''}
     </div>${sections.join('')}`;
-  root.querySelectorAll('details').forEach(d => { d.open = true; });   // e.g. the collapsible Channel changes card
+  root.setAttribute('inert', '');   // keeps this off-screen copy out of tab order / screen readers until it's removed
+  shrinkTablesToFit(root);
   window.print();
 }
 $('#exportPdfBtn').addEventListener('click', exportPdf);
@@ -1515,6 +1538,7 @@ function hydrateFromExport(data) {
   state.notes = Object.assign({ setup: '', mix: '', paid: '', detail: '', compare: '' }, data.notes);
   $('#notesSetup').value = state.notes.setup;
   Object.assign(state.view, data.view || {});
+  state.isWorkingCopy = true;
   refreshSetup();
   document.querySelectorAll('.tab-btn').forEach(b => b.disabled = false);
   $('#exportReportBtn').disabled = false; $('#exportReportBtn').title = '';
@@ -1523,21 +1547,27 @@ function hydrateFromExport(data) {
   // recipients only see the finished report tabs, with no path back into re-configuring anything.
   $('#tabs [data-tab="setup"]').style.display = 'none';
   setTab(['mix', 'paid', 'detail', 'compare'].includes(state.view.tab) ? state.view.tab : 'mix');
+  // Seed localStorage immediately (not just on the next edit) so reopening this same file goes through
+  // restoreSavedSetup() below instead of re-running this function — otherwise any notes or channel changes
+  // added after opening would get silently discarded next time, overwritten by this baked-in snapshot again.
+  persist();
 }
 
 /* Resumes automatically from what was saved to this browser (persist(), above) — same underlying data shape as
    an exported working copy, just sourced from localStorage instead of a downloaded file, and only for the tab
-   already restored into state.view.tab rather than always jumping to Mix. */
+   already restored into state.view.tab rather than always jumping to Mix. Also used to reopen a working copy
+   after its first visit, so edits made since opening it (notes, channel changes, etc.) aren't lost. */
 function restoreSavedSetup() {
   for (const which of ['prod', 'remodel']) Object.assign(state.files[which], { rows: [], headers: [] });
   renderSlot('prod'); renderSlot('remodel');
   $('#badge-prod').textContent = `${state.files.prod.name} · restored from your last session`;
   $('#badge-remodel').textContent = `${state.files.remodel.name} · restored from your last session`;
   refreshSetup();
+  if (state.isWorkingCopy) $('#tabs [data-tab="setup"]').style.display = 'none';
   if (['mix', 'paid', 'detail', 'compare'].includes(state.view.tab)) {
     document.querySelectorAll('.tab-btn').forEach(b => b.disabled = false);
     $('#exportReportBtn').disabled = false; $('#exportReportBtn').title = '';
-  $('#exportPdfBtn').disabled = false; $('#exportPdfBtn').title = '';
+    $('#exportPdfBtn').disabled = false; $('#exportPdfBtn').title = '';
     setTab(state.view.tab);
   }
 }
@@ -1551,8 +1581,10 @@ $('#forgetSetupBtn').addEventListener('click', () => {
   try { localStorage.removeItem(STORE_KEY); } catch (e) {}
   location.reload();
 });
-if (window.__EXPORT_STATE__) hydrateFromExport(window.__EXPORT_STATE__);
-else if (state.files.prod?.agg && state.files.remodel?.agg) restoreSavedSetup();
+// A saved setup already in this browser (from a previous visit — including a reopened working copy, so
+// further edits made after first opening it aren't lost) always wins over a freshly-baked-in export snapshot.
+if (state.files.prod?.agg && state.files.remodel?.agg) restoreSavedSetup();
+else if (window.__EXPORT_STATE__) hydrateFromExport(window.__EXPORT_STATE__);
 else { renderSlot('prod'); renderSlot('remodel'); }
 </script>
 </body>
