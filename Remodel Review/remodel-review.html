@@ -231,7 +231,7 @@ const state = {
   bucketOverrides: {}, outcomeGroups: {}, outcomeExclude: {}, channelFlags: {}, channelChanges: [],
   notes: { setup: '', mix: '', paid: '', detail: '' },
   channels: new Map(),                        // normKey -> {name, segs:{prod,remodel}, rev:{prod,remodel}}
-  view: { tab: 'setup', cat: '__all__', out: '__all__', level: 'channel', dsort: { P: { key: 'val', k: null, m: 'rev', dir: -1 }, R: { key: 'val', k: null, m: 'rev', dir: -1 } }, detailN: 0, detailMetric: 'rev', detailMode: 'both', detailOff: {}, detailCatOff: {}, detailDD: {}, detailSpendCat: {}, detailBucketCollapsed: {}, detailChangeFilter: '', topN: 15, paidMode: 'pct', psort: { P: { key: 'rev', dir: -1 }, R: { key: 'rev', dir: -1 } }, mixOff: {}, mixCatOff: {}, mixDD: {}, mixMode: 'both', mixMetric: 'pct', bucketFilter: 'all' },
+  view: { tab: 'setup', cat: '__all__', out: '__all__', level: 'channel', dsort: { P: { key: 'val', k: null, m: 'rev', dir: -1 }, R: { key: 'val', k: null, m: 'rev', dir: -1 } }, detailN: 0, detailMetric: 'rev', detailMode: 'both', detailOff: {}, detailCatOff: {}, detailDD: {}, detailSpendCat: {}, detailBucketCollapsed: {}, detailChangeFilter: '', topN: 15, paidMode: 'pct', psort: { P: { key: 'rev', dir: -1 }, R: { key: 'rev', dir: -1 } }, paidOff: {}, paidCatOff: {}, paidDD: {}, paidSpendCat: {}, mixOff: {}, mixCatOff: {}, mixDD: {}, mixMode: 'both', mixMetric: 'pct', bucketFilter: 'all' },
 };
 /* Restoring saved setup: `files` (aggregated data + column mapping, no raw rows) and `mapBuckets` are only
    present in the saved JSON once they're actually ready, so a stale/missing value never clobbers the fresh
@@ -958,8 +958,8 @@ function syncFilters() {
   $('#fOut').value = outs.includes(v.out) ? v.out : '__all__'; v.out = $('#fOut').value;
   const hasTactic = ['prod', 'remodel'].some(w => state.files[w].map.tactic);
   $('#fLevelWrap').hidden = !hasTactic || v.tab === 'mix';
-  $('#fOutWrap').hidden = v.tab === 'detail';   // the detailed view shows outcomes as columns...
-  $('#fCatWrap').hidden = v.tab === 'detail';   // ...under product categories
+  $('#fOutWrap').hidden = v.tab === 'detail' || v.tab === 'paid';   // detail and paid have their own per-side outcome checklists...
+  $('#fCatWrap').hidden = v.tab === 'detail' || v.tab === 'paid';   // ...and category checklists
   if (!hasTactic) v.level = 'channel';
   $('#fLevel').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.v === v.level));
 }
@@ -975,7 +975,7 @@ function render() {
   scopeNote();
   const t = state.view.tab;
   const hasTactic = ['prod', 'remodel'].some(w => state.files[w].map.tactic);
-  $('#filterCard').hidden = t === 'mix' || (t === 'detail' && !hasTactic);   // the mix has its own outcome checklist and shows every category as a section
+  $('#filterCard').hidden = t === 'mix' || ((t === 'detail' || t === 'paid') && !hasTactic);   // mix, detail and paid all have their own category/outcome checklists and show every category as a section
   $('#view').innerHTML = '';
   ({ mix: renderMix, paid: renderPaid, detail: renderDetail })[t]();
 }
@@ -1056,48 +1056,83 @@ function renderMix() {
 }
 
 /* ---------- 2. paid contribution ---------- */
-/* One side of the table: paid channels ranked by revenue. Shares are of PAID spend / PAID revenue (not total revenue). */
-function paidSide(S, sort) {
-  const rows = S.rows.filter(r => r.bucket === 'paid' && (r.rev !== 0 || r.spend !== 0));
-  const totRev = rows.reduce((t, r) => t + r.rev, 0), totSpend = rows.reduce((t, r) => t + r.spend, 0);
-  const list = rows.map(r => ({ name: r.tac ? `${r.ch} › ${r.tac}` : r.ch, chKey: r.chKey, spend: r.spend, rev: r.rev, spendShare: div(r.spend, totSpend), revShare: div(r.rev, totRev) }));
+/* One side of the table: paid channels ranked by revenue. Revenue sums whichever Categories/Outcomes are ticked
+   (same checklist idea as Detail/Mix). Spend has its own separate "Spend category" picker, decoupled from those
+   ticks — same reasoning as Detail: spend often isn't split by outcome/category the way revenue is, so it's
+   always "all outcomes" and just one chosen category (or "All"). Shares are of PAID spend / PAID revenue. */
+function paidSideView(W) {
+  const v = state.view, file = SIDE_FILE[W], F = state.files[file];
+  const off = (v.paidOff[W] ||= {}), catOff = (v.paidCatOff[W] ||= {});
+  const catItems = [[COMBINED, 'All'], ...allCategories()].filter(([c]) => c === COMBINED ? F.agg.length : F.agg.some(a => norm(a.cat) === c));
+  const outItems = allOutcomes().map(o => [o, o]).filter(([k]) => catItems.some(([c]) => slice(file, c, k, v.level, true).has));
+  const ddCat = ddown(v.paidDD, W, 'cat', 'Categories', 'data-pw', 'data-pc', catItems, catOff);
+  const ddOut = outItems.length ? ddown(v.paidDD, W, 'out', 'Outcomes', 'data-pw', 'data-po', outItems, off) : '<span class="muted">No outcomes in this file.</span>';
+  const spendCatPick = v.paidSpendCat[W] ?? COMBINED;
+  const spendCat = catItems.some(([c]) => c === spendCatPick) ? spendCatPick : COMBINED;
+  const spendCatSelect = `<div><label style="display:block;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">Spend category</label><select data-paid-spend-cat="${W}" style="padding:6px 8px;font-size:12px">${catItems.map(([c, name]) => `<option value="${esc(c)}" ${spendCat === c ? 'selected' : ''}>${esc(name)}</option>`).join('')}</select></div>`;
+  const head = `<h3 style="margin:0 0 10px">${SIDE_NAME[W]}</h3><div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-start">${ddCat}${ddOut}${spendCatSelect}</div>`;
+  if (!catItems.length) return { head, list: [], totRev: 0, totSpend: 0, catItems, outItems };
+
+  const revMap = new Map();
+  for (const [c] of catItems.filter(([c]) => !catOff[c])) for (const [k] of outItems.filter(([k]) => !off[k])) {
+    for (const r of slice(file, c, k, v.level, true).rows) {
+      if (r.bucket !== 'paid') continue;
+      const e = revMap.get(r.key) || { name: r.tac ? `${r.ch} › ${r.tac}` : r.ch, chKey: r.chKey, rev: 0 };
+      e.rev += r.rev; revMap.set(r.key, e);
+    }
+  }
+  const spendMap = new Map();
+  for (const r of slice(file, spendCat, COMBINED, v.level, true).rows) {
+    if (r.bucket !== 'paid') continue;
+    const e = spendMap.get(r.key) || { name: r.tac ? `${r.ch} › ${r.tac}` : r.ch, chKey: r.chKey, spend: 0 };
+    e.spend = F.spendRepeats ? Math.max(e.spend, r.spend) : e.spend + r.spend; spendMap.set(r.key, e);
+  }
+  const keys = new Set([...revMap.keys(), ...spendMap.keys()]);
+  const totRev = [...revMap.values()].reduce((t, e) => t + e.rev, 0), totSpend = [...spendMap.values()].reduce((t, e) => t + e.spend, 0);
+  const list = [...keys].map(k => {
+    const rEntry = revMap.get(k), sEntry = spendMap.get(k);
+    return { name: rEntry?.name ?? sEntry?.name ?? k, chKey: rEntry?.chKey ?? sEntry?.chKey ?? k,
+      spend: sEntry?.spend ?? 0, rev: rEntry?.rev ?? 0, spendShare: div(sEntry?.spend ?? 0, totSpend), revShare: div(rEntry?.rev ?? 0, totRev) };
+  });
   // Spend/revenue share is just spend/revenue divided by the same total, so sorting by share and by the raw
   // number always agree — one sort key covers both display modes.
-  const { key, dir } = sort;
+  const { key, dir } = v.psort[W];
   list.sort((a, b) => key === 'name' ? a.name.localeCompare(b.name) * dir : ((a[key] ?? -Infinity) - (b[key] ?? -Infinity)) * dir);
-  return { list, totRev, totSpend };
+  return { head, list, totRev, totSpend, catItems, outItems };
 }
 
 function renderPaid() {
-  const v = state.view, P = slice('prod', v.cat, v.out, v.level), R = slice('remodel', v.cat, v.out, v.level);
-  if (!P.has && !R.has) { $('#view').innerHTML = '<div class="empty">No data for this selection.</div>'; return; }
+  const v = state.view;
+  const V = { P: paidSideView('P'), R: paidSideView('R') };
   const raw = v.paidMode === 'raw';
-  const sp = paidSide(P, v.psort.P), sr = paidSide(R, v.psort.R), n = Math.max(sp.list.length, sr.list.length), shown = v.topN ? Math.min(v.topN, n) : n;
+  const sp = V.P, sr = V.R, n = Math.max(sp.list.length, sr.list.length), shown = v.topN ? Math.min(v.topN, n) : n;
   const spendOf = e => raw ? fmtMoney(e.spend) : fmtPct(e.spendShare), revOf = e => raw ? fmtMoney(e.rev) : fmtPct(e.revShare);
   const cells = (e, i, cls = '', isRemodel = false) => e
     ? `<td class="num ${cls}"><span class="rank">${i + 1}</span></td><td class="wrap">${esc(e.name)}${isRemodel ? newBadge(e.chKey) : ''}</td><td class="num">${spendOf(e)}</td><td class="num">${revOf(e)}</td>`
     : `<td class="${cls}"></td><td></td><td></td><td></td>`;
   let body = '';
   for (let i = 0; i < shown; i++) body += `<tr>${cells(sp.list[i], i)}${cells(sr.list[i], i, 'sepl', true)}</tr>`;
-  const total = (has, t, cls = '') => has
+  const total = (list, t, cls = '') => list.length
     ? `<td class="${cls}"></td><td>Paid total</td><td class="num">${raw ? fmtMoney(t.totSpend) : fmtPct(1)}</td><td class="num">${raw ? fmtMoney(t.totRev) : fmtPct(1)}</td>`
     : `<td class="${cls}"></td><td></td><td></td><td></td>`;
   const lvl = v.level === 'tactic' ? 'Channel › tactic' : 'Channel';
   const sh = raw ? ['Spend', 'Revenue'] : ['% of paid spend', '% of paid revenue'];
   // Prod and Remodel are ranked independently — the "#" pairs the Nth-ranked channel on each side, which needn't
   // be the same channel, so each side gets its own sortable columns and sort state.
-  const head = (side, sepl) => {
+  const thead = (side, sepl) => {
     const st = v.psort[side], mk = k => st.key === k ? (st.dir > 0 ? ' ▲' : ' ▼') : '';
     return `<th${sepl ? ' class="sepl"' : ''}>#</th><th class="sortable" data-ps="${side}" data-sk="name">${lvl}${mk('name')}</th><th class="sortable" data-ps="${side}" data-sk="spend">${sh[0]}${mk('spend')}</th><th class="sortable" data-ps="${side}" data-sk="rev">${sh[1]}${mk('rev')}</th>`;
   };
-  $('#view').innerHTML = `${notesCard('paid')}<div class="card"><div class="filters">
+  $('#view').innerHTML = `${notesCard('paid')}
+    <div class="card"><div style="display:flex;gap:18px;flex-wrap:wrap"><div style="flex:1;min-width:260px">${sp.head}</div><div style="flex:1;min-width:260px">${sr.head}</div></div></div>
+    <div class="card"><div class="filters">
       <div><label>Values</label><div class="seg" id="paidMode"><button data-v="pct" class="${raw ? '' : 'on'}">Percentages</button><button data-v="raw" class="${raw ? 'on' : ''}">Raw numbers</button></div></div>
       <div><label>Show</label><select id="topN">${[10, 15, 25, 50, 0].map(k => `<option value="${k}" ${v.topN === k ? 'selected' : ''}>${k ? 'Top ' + k : 'All'}</option>`).join('')}</select></div></div></div>
     <div class="card" style="padding:0"><div class="tablewrap"><table><thead>
       <tr><th colspan="4" class="grp">Prod</th><th colspan="4" class="grp sepl">Remodel</th></tr>
-      <tr>${head('P', false)}${head('R', true)}</tr>
-      </thead><tbody>${body || '<tr><td colspan="8" class="empty">No paid channels. Check bucket assignments in Setup.</td></tr>'}
-      <tr class="total">${total(P.has, sp)}${total(R.has, sr, 'sepl')}</tr></tbody></table></div></div>`;
+      <tr>${thead('P', false)}${thead('R', true)}</tr>
+      </thead><tbody>${body || '<tr><td colspan="8" class="empty">No paid channels. Check bucket assignments in Setup and the checklists above.</td></tr>'}
+      <tr class="total">${total(sp.list, sp)}${total(sr.list, sr, 'sepl')}</tr></tbody></table></div></div>`;
   $('#paidMode').addEventListener('click', e => { const b = e.target.closest('button'); if (b) { v.paidMode = b.dataset.v; renderPaid(); } });
   $('#topN').addEventListener('change', e => { v.topN = +e.target.value; renderPaid(); });
   $('#view').querySelectorAll('[data-ps]').forEach(h => h.addEventListener('click', () => {
@@ -1105,6 +1140,13 @@ function renderPaid() {
     v.psort[side] = { key, dir: st.key === key ? -st.dir : (key === 'name' ? 1 : -1) };
     renderPaid();
   }));
+  const tick = (attr, store, itemsOf) => {
+    $('#view').querySelectorAll(`[${attr}]`).forEach(cb => cb.addEventListener('change', () => { const o = (store[cb.dataset.pw] ||= {}), k = cb.getAttribute(attr); if (cb.checked) delete o[k]; else o[k] = true; renderPaid(); }));
+    $('#view').querySelectorAll(`[${attr}-all]`).forEach(b => b.addEventListener('click', () => { const W = b.dataset.pw; store[W] = b.getAttribute(attr + '-all') === '1' ? {} : Object.fromEntries(itemsOf(W).map(([k]) => [k, true])); renderPaid(); }));
+  };
+  tick('data-po', v.paidOff, W => V[W].outItems); tick('data-pc', v.paidCatOff, W => V[W].catItems);
+  wireDD($('#view'), v.paidDD);
+  $('#view').querySelectorAll('[data-paid-spend-cat]').forEach(sel => sel.addEventListener('change', e => { v.paidSpendCat[e.target.dataset.paidSpendCat] = e.target.value; renderPaid(); }));
   wireNotes($('#view'));
 }
 
