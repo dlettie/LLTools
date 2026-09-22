@@ -106,6 +106,22 @@
     .ddown[open] summary { border-bottom: 1px solid var(--border); }
     .ddown-panel { max-height: 260px; overflow: auto; padding: 10px 12px; }
     #ccCard summary::-webkit-details-marker { display: none; }
+    #printRoot { display: none; }
+    .print-cover { padding: 20px 0 10px; }
+    .print-cover h1 { margin: 0 0 6px; font-size: 24px; }
+    .print-cover p { margin: 2px 0; color: var(--muted); }
+    .print-cover .print-notes { margin-top: 10px; white-space: pre-wrap; color: var(--text); }
+    .print-section h2 { margin: 0 0 14px; font-size: 18px; }
+    @page { size: landscape; margin: 12mm; }
+    @media print {
+      body > *:not(#printRoot) { display: none !important; }
+      #printRoot { display: block !important; }
+      .print-section { page-break-before: always; }
+      .card { box-shadow: none; break-inside: avoid; }
+      .tablewrap, .tablewrap.short { max-height: none !important; overflow: visible !important; }
+      button, select, input, .ddown, .filters, .setup-actions { display: none !important; }   /* config controls — the tables already reflect whatever was picked; notes (textarea) stay visible */
+      th { position: static; }   /* sticky headers don't paginate well */
+    }
   </style>
 </head>
 <body>
@@ -113,7 +129,10 @@
   <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap">
     <div><h1>Remodel Review</h1>
       <p class="sub">Compare a remodel against the production model: bucket mix, paid media contribution and channel detail. Data stays in your browser.</p></div>
-    <button class="btn primary" id="exportReportBtn" disabled title="Run the review first">Export working copy</button>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn" id="exportPdfBtn" disabled title="Run the review first">Export PDF</button>
+      <button class="btn primary" id="exportReportBtn" disabled title="Run the review first">Export working copy</button>
+    </div>
   </div>
 
   <div class="tab-bar" id="tabs">
@@ -121,6 +140,7 @@
     <button class="tab-btn" data-tab="mix" disabled>1 · Bucket Mix</button>
     <button class="tab-btn" data-tab="paid" disabled>2 · Paid Contribution</button>
     <button class="tab-btn" data-tab="detail" disabled>3 · Detailed View</button>
+    <button class="tab-btn" data-tab="compare" disabled>4 · Comparison</button>
   </div>
 
   <!-- SETUP -->
@@ -229,9 +249,9 @@ const state = {
   files: { prod: null, remodel: null },      // {name, wb, sheet, rows, headers, map, agg, skipped}
   mapSources: [], mapCfg: { idx: '', chCol: '', bkCol: '' }, mapBuckets: new Map(), mapIssues: { rows: 0, bad: [], conflicts: [] },   // bucket mapping tab (per upload)
   bucketOverrides: {}, outcomeGroups: {}, outcomeExclude: {}, channelFlags: {}, channelChanges: [],
-  notes: { setup: '', mix: '', paid: '', detail: '' },
+  notes: { setup: '', mix: '', paid: '', detail: '', compare: '' },
   channels: new Map(),                        // normKey -> {name, segs:{prod,remodel}, rev:{prod,remodel}}
-  view: { tab: 'setup', cat: '__all__', out: '__all__', level: 'channel', dsort: { P: { key: 'val', k: null, m: 'rev', dir: -1 }, R: { key: 'val', k: null, m: 'rev', dir: -1 } }, detailN: 0, detailMetric: 'rev', detailMode: 'both', detailOff: {}, detailCatOff: {}, detailDD: {}, detailSpendCat: {}, detailBucketCollapsed: {}, detailChangeFilter: '', topN: 15, paidMode: 'pct', psort: { P: { key: 'rev', dir: -1 }, R: { key: 'rev', dir: -1 } }, paidOff: {}, paidCatOff: {}, paidDD: {}, paidSpendCat: {}, mixOff: {}, mixCatOff: {}, mixDD: {}, mixMode: 'both', mixMetric: 'pct', bucketFilter: 'all' },
+  view: { tab: 'setup', cat: '__all__', out: '__all__', level: 'channel', dsort: { P: { key: 'val', k: null, m: 'rev', dir: -1 }, R: { key: 'val', k: null, m: 'rev', dir: -1 } }, detailN: 0, detailMetric: 'rev', detailMode: 'both', detailOff: {}, detailCatOff: {}, detailDD: {}, detailSpendCat: {}, detailBucketCollapsed: {}, detailChangeFilter: '', topN: 15, paidMode: 'pct', psort: { P: { key: 'rev', dir: -1 }, R: { key: 'rev', dir: -1 } }, paidOff: {}, paidCatOff: {}, paidDD: {}, paidSpendCat: {}, mixOff: {}, mixCatOff: {}, mixDD: {}, mixMode: 'both', mixMetric: 'pct', bucketFilter: 'all', compareMetric: 'rev', compareOff: {}, compareCatOff: {}, compareDD: {}, compareSpendCat: {}, compareBucket: 'all', compareSort: { key: 'deltaPct', dir: -1 } },
 };
 /* Restoring saved setup: `files` (aggregated data + column mapping, no raw rows) and `mapBuckets` are only
    present in the saved JSON once they're actually ready, so a stale/missing value never clobbers the fresh
@@ -937,7 +957,7 @@ function setTab(tab) {
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
   $('#tab-setup').hidden = tab !== 'setup';
   $('#tab-analysis').hidden = tab === 'setup';
-  $('.container').classList.toggle('wide', tab === 'detail' || tab === 'mix');   // two tables side by side need the room
+  $('.container').classList.toggle('wide', tab === 'detail' || tab === 'mix' || tab === 'compare');   // two tables side by side (or a wide comparison table) need the room
   if (tab !== 'setup') { syncFilters(); render(); }
   persist();   // so a reload resumes on the tab you were last on
 }
@@ -945,6 +965,7 @@ $('#tabs').addEventListener('click', e => { const b = e.target.closest('.tab-btn
 $('#goBtn').addEventListener('click', () => {
   document.querySelectorAll('.tab-btn').forEach(b => b.disabled = false);
   $('#exportReportBtn').disabled = false; $('#exportReportBtn').title = '';
+  $('#exportPdfBtn').disabled = false; $('#exportPdfBtn').title = '';
   state.view.cat = '__all__'; state.view.out = '__all__';
   setTab('mix');
 });
@@ -958,8 +979,8 @@ function syncFilters() {
   $('#fOut').value = outs.includes(v.out) ? v.out : '__all__'; v.out = $('#fOut').value;
   const hasTactic = ['prod', 'remodel'].some(w => state.files[w].map.tactic);
   $('#fLevelWrap').hidden = !hasTactic || v.tab === 'mix';
-  $('#fOutWrap').hidden = v.tab === 'detail' || v.tab === 'paid';   // detail and paid have their own per-side outcome checklists...
-  $('#fCatWrap').hidden = v.tab === 'detail' || v.tab === 'paid';   // ...and category checklists
+  $('#fOutWrap').hidden = v.tab === 'detail' || v.tab === 'paid' || v.tab === 'compare';   // detail, paid and compare have their own outcome checklists...
+  $('#fCatWrap').hidden = v.tab === 'detail' || v.tab === 'paid' || v.tab === 'compare';   // ...and category checklists
   if (!hasTactic) v.level = 'channel';
   $('#fLevel').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.v === v.level));
 }
@@ -975,9 +996,9 @@ function render() {
   scopeNote();
   const t = state.view.tab;
   const hasTactic = ['prod', 'remodel'].some(w => state.files[w].map.tactic);
-  $('#filterCard').hidden = t === 'mix' || ((t === 'detail' || t === 'paid') && !hasTactic);   // mix, detail and paid all have their own category/outcome checklists and show every category as a section
+  $('#filterCard').hidden = t === 'mix' || ((t === 'detail' || t === 'paid' || t === 'compare') && !hasTactic);   // mix, detail, paid and compare all have their own category/outcome checklists and show every category as a section
   $('#view').innerHTML = '';
-  ({ mix: renderMix, paid: renderPaid, detail: renderDetail })[t]();
+  ({ mix: renderMix, paid: renderPaid, detail: renderDetail, compare: renderCompare })[t]();
 }
 
 /* ---------- 1. bucket mix ---------- */
@@ -1315,6 +1336,117 @@ function exportCsv(V) {
   a.href = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv' })); a.download = 'remodel_review_detail.csv'; a.click();
 }
 
+/* ---------- 4. comparison ---------- */
+/* One metric (Spend, Revenue or iROAS), one table: every channel with Prod and Remodel side by side plus the
+   raw and percentage change between them. Categories/Outcomes/Spend-category are per-side pickers, same as
+   Detail and Paid Contribution — Prod and Remodel often have different real category/outcome breakdowns, so
+   forcing one shared scope on both distorted the comparison instead of clarifying it. */
+const COMPARE_METRICS = DETAIL_METRICS.filter(([m]) => m !== 'share');
+/* One side's scoped revenue/spend maps, plus the controls (Categories, Outcomes, Spend category) that produced them. */
+function compareSideScope(W) {
+  const v = state.view, file = SIDE_FILE[W], F = state.files[file];
+  const off = (v.compareOff[W] ||= {}), catOff = (v.compareCatOff[W] ||= {});
+  const catItems = [[COMBINED, 'All'], ...allCategories()].filter(([c]) => c === COMBINED ? F.agg.length : F.agg.some(a => norm(a.cat) === c));
+  const outItems = allOutcomes().map(o => [o, o]).filter(([k]) => catItems.some(([c]) => slice(file, c, k, v.level, true).has));
+  const ddCat = ddown(v.compareDD, W, 'cat', 'Categories', 'data-cw', 'data-cc', catItems, catOff);
+  const ddOut = outItems.length ? ddown(v.compareDD, W, 'out', 'Outcomes', 'data-cw', 'data-co', outItems, off) : '<span class="muted">No outcomes in this file.</span>';
+  const spendCatPick = v.compareSpendCat[W] ?? COMBINED;
+  const spendCat = catItems.some(([c]) => c === spendCatPick) ? spendCatPick : COMBINED;
+  const spendCatSelect = `<div><label style="display:block;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">Spend category</label><select data-compare-spend-cat="${W}" style="padding:6px 8px;font-size:12px">${catItems.map(([c, name]) => `<option value="${esc(c)}" ${spendCat === c ? 'selected' : ''}>${esc(name)}</option>`).join('')}</select></div>`;
+  const head = `<h3 style="margin:0 0 10px">${SIDE_NAME[W]}</h3><div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-start">${ddCat}${ddOut}${spendCatSelect}</div>`;
+  if (!catItems.length) return { head, revMap: new Map(), spendMap: new Map(), catItems, outItems };
+
+  // Revenue sums whichever Categories/Outcomes are ticked; Spend is the single Spend-category pick, all
+  // outcomes — same decoupled-scope reasoning as Detail and Paid Contribution.
+  const revMap = new Map();
+  for (const [c] of catItems.filter(([c]) => !catOff[c])) for (const [k] of outItems.filter(([k]) => !off[k])) {
+    for (const r of slice(file, c, k, v.level, true).rows) {
+      const e = revMap.get(r.key) || { name: r.tac ? `${r.ch} › ${r.tac}` : r.ch, chKey: r.chKey, rev: 0 };
+      e.rev += r.rev; revMap.set(r.key, e);
+    }
+  }
+  const spendMap = new Map();
+  for (const r of slice(file, spendCat, COMBINED, v.level, true).rows) {
+    const e = spendMap.get(r.key) || { name: r.tac ? `${r.ch} › ${r.tac}` : r.ch, chKey: r.chKey, spend: 0 };
+    e.spend = F.spendRepeats ? Math.max(e.spend, r.spend) : e.spend + r.spend; spendMap.set(r.key, e);
+  }
+  return { head, revMap, spendMap, catItems, outItems };
+}
+function compareData() {
+  const v = state.view, P = compareSideScope('P'), R = compareSideScope('R');
+  const keys = new Set([...P.revMap.keys(), ...P.spendMap.keys(), ...R.revMap.keys(), ...R.spendMap.keys()]);
+  const valuesOf = side => key => { const spend = side.spendMap.get(key)?.spend ?? 0, rev = side.revMap.get(key)?.rev ?? 0; return { spend, rev, roas: spend ? rev / spend : null }; };
+  const pVal = valuesOf(P), rVal = valuesOf(R);
+  const nameOf = key => P.revMap.get(key)?.name ?? P.spendMap.get(key)?.name ?? R.revMap.get(key)?.name ?? R.spendMap.get(key)?.name ?? key;
+  const rows = [...keys].map(key => {
+    const chKey = P.revMap.get(key)?.chKey ?? P.spendMap.get(key)?.chKey ?? R.revMap.get(key)?.chKey ?? R.spendMap.get(key)?.chKey ?? key;
+    return { key, chKey, name: nameOf(key), bucket: bucketOf(chKey), p: pVal(key), r: rVal(key) };
+  }).filter(x => v.compareBucket === 'all' || x.bucket === v.compareBucket);
+  return { P, R, rows };
+}
+/* Raw change for one metric: money for Spend/Revenue, "x" for iROAS — colored like the rest of the app's deltas. */
+function fmtRawDelta(metric, d) {
+  if (d == null || !isFinite(d)) return '<span class="muted">—</span>';
+  const cls = d > 0.0005 ? 'up' : d < -0.0005 ? 'down' : 'muted';
+  const body = metric === 'roas' ? `${Math.abs(d).toFixed(2)}x` : fmtMoney(Math.abs(d));
+  return `<span class="${cls}">${d > 0 ? '+' : d < 0 ? '−' : ''}${body}</span>`;
+}
+/* % change, with "New"/"Dropped" instead of a meaningless "—" when one side is zero for Spend/Revenue. */
+function comparePctCell(metric, p, r) {
+  if (metric !== 'roas') {
+    if (!p && r) return '<span class="pill new">New</span>';
+    if (p && !r) return '<span class="muted">Dropped</span>';
+  }
+  return fmtDeltaPct(p, r);
+}
+function renderCompare() {
+  const v = state.view, D = compareData(), metric = v.compareMetric, mLabel = COMPARE_METRICS.find(([m]) => m === metric)[1];
+  const st = v.compareSort;
+  const val = row => {
+    const p = row.p[metric], r = row.r[metric];
+    if (st.key === 'name') return row.name.toLowerCase();
+    if (st.key === 'p') return p; if (st.key === 'r') return r;
+    if (st.key === 'delta') return p != null && r != null ? r - p : null;
+    return p ? (r - p) / Math.abs(p) : null;   // deltaPct
+  };
+  const rows = D.rows.slice().sort((a, b) => { const x = val(a), y = val(b); if (x == null && y == null) return 0; if (x == null) return 1; if (y == null) return -1; return (x < y ? -1 : x > y ? 1 : 0) * st.dir; });
+  const dirMark = ' ' + (st.dir > 0 ? '▲' : '▼');
+  const mk = k => st.key === k ? dirMark : '';
+  const body = rows.map(row => {
+    const p = row.p[metric], r = row.r[metric], d = p != null && r != null ? r - p : null;
+    return `<tr><td class="wrap"><span class="dot b-${row.bucket}"></span>${esc(row.name)}${newBadge(row.chKey)}</td>
+      <td class="num">${fmtMetric(metric, p)}</td><td class="num">${fmtMetric(metric, r)}</td>
+      <td class="num">${fmtRawDelta(metric, d)}</td><td class="num">${comparePctCell(metric, p, r)}</td></tr>`;
+  }).join('');
+  $('#view').innerHTML = `${notesCard('compare', false)}
+    <div class="card"><div style="display:flex;gap:18px;flex-wrap:wrap"><div style="flex:1;min-width:260px">${D.P.head}</div><div style="flex:1;min-width:260px">${D.R.head}</div></div></div>
+    <div class="card"><div class="filters">
+      <div><label>Metric</label><div class="seg" id="compareMetric">${COMPARE_METRICS.map(([m, l]) => `<button data-v="${m}" class="${m === metric ? 'on' : ''}">${l}</button>`).join('')}</div></div>
+      <div><label>Bucket</label><select id="compareBucket"><option value="all">All buckets</option>${[...BUCKETS, ['unassigned', 'Unassigned']].map(([b, l]) => `<option value="${b}" ${v.compareBucket === b ? 'selected' : ''}>${l}</option>`).join('')}</select></div></div></div>
+    <div class="card" style="padding:0"><div class="tablewrap"><table><thead>
+      <tr><th class="sortable" data-cs="name">${v.level === 'tactic' ? 'Channel › tactic' : 'Channel'}${mk('name')}</th>
+        <th class="sortable" data-cs="p">Prod · ${esc(mLabel)}${mk('p')}</th>
+        <th class="sortable" data-cs="r">Remodel · ${esc(mLabel)}${mk('r')}</th>
+        <th class="sortable" data-cs="delta">Δ (raw)${mk('delta')}</th>
+        <th class="sortable" data-cs="deltaPct">Δ (%)${mk('deltaPct')}</th></tr>
+      </thead><tbody>${body || '<tr><td colspan="5" class="empty">No channels match. Check the checklists above and bucket assignments in Setup.</td></tr>'}</tbody></table></div></div>`;
+  $('#compareMetric').addEventListener('click', e => { const b = e.target.closest('button'); if (b) { v.compareMetric = b.dataset.v; renderCompare(); } });
+  $('#compareBucket').addEventListener('change', e => { v.compareBucket = e.target.value; renderCompare(); });
+  $('#view').querySelectorAll('[data-cs]').forEach(h => h.addEventListener('click', () => {
+    const key = h.dataset.cs, st2 = v.compareSort;
+    v.compareSort = { key, dir: st2.key === key ? -st2.dir : (key === 'name' ? 1 : -1) };
+    renderCompare();
+  }));
+  const tick = (attr, store, itemsOf) => {
+    $('#view').querySelectorAll(`[${attr}]`).forEach(cb => cb.addEventListener('change', () => { const o = (store[cb.dataset.cw] ||= {}), k = cb.getAttribute(attr); if (cb.checked) delete o[k]; else o[k] = true; renderCompare(); }));
+    $('#view').querySelectorAll(`[${attr}-all]`).forEach(b => b.addEventListener('click', () => { const W = b.dataset.cw; store[W] = b.getAttribute(attr + '-all') === '1' ? {} : Object.fromEntries(itemsOf(W).map(([k]) => [k, true])); renderCompare(); }));
+  };
+  tick('data-co', v.compareOff, W => D[W].outItems); tick('data-cc', v.compareCatOff, W => D[W].catItems);
+  wireDD($('#view'), v.compareDD);
+  $('#view').querySelectorAll('[data-compare-spend-cat]').forEach(sel => sel.addEventListener('change', e => { v.compareSpendCat[e.target.dataset.compareSpendCat] = e.target.value; renderCompare(); }));
+  wireNotes($('#view'));
+}
+
 /* ============================== working-copy export ============================== */
 /* Exports a full, standalone copy of THIS tool (same file, byte for byte) with the aggregated data, bucket/outcome
    setup, notes and current filters baked in as window.__EXPORT_STATE__. On open, hydrateFromExport() below feeds
@@ -1335,6 +1467,37 @@ function exportWorkingCopy() {
 }
 $('#exportReportBtn').addEventListener('click', exportWorkingCopy);
 
+/* ============================== PDF export ============================== */
+/* Builds one flow document with all four report tabs stacked one after another (each starting on a fresh
+   printed page), then hands off to the browser's native print dialog — "Save as PDF" there is the actual
+   PDF writer, so this stays dependency-free. Reuses the real render*() functions (rather than re-deriving the
+   numbers) so what's in the PDF always matches what's on screen; only the tab you were on is left visible
+   afterward, so nothing about the live page changes from the reader's point of view. */
+function exportPdf() {
+  const v = state.view;
+  const originalTab = v.tab, originalMixMode = v.mixMode, originalDetailMode = v.detailMode, originalBucketCollapsed = v.detailBucketCollapsed;
+  // Force everything open/expanded for the PDF, regardless of what's collapsed or single-sided on screen —
+  // a report should show the full picture, not whatever was convenient to look at moments ago.
+  v.mixMode = 'both'; v.detailMode = 'both'; v.detailBucketCollapsed = {};
+  const TABS = [['mix', '1 · Bucket Mix'], ['paid', '2 · Paid Contribution'], ['detail', '3 · Detailed View'], ['compare', '4 · Comparison']];
+  const sections = TABS.map(([tab, label]) => {
+    v.tab = tab; syncFilters(); render();
+    return `<section class="print-section"><h2>${esc(label)}</h2>${$('#view').innerHTML}</section>`;
+  });
+  v.tab = originalTab; v.mixMode = originalMixMode; v.detailMode = originalDetailMode; v.detailBucketCollapsed = originalBucketCollapsed;
+  if (originalTab !== 'setup') { syncFilters(); render(); }   // restore the live page before anything paints; render() only applies to the analysis tabs
+  let root = document.getElementById('printRoot');
+  if (!root) { root = document.createElement('div'); root.id = 'printRoot'; document.body.appendChild(root); }
+  root.innerHTML = `<div class="print-cover"><h1>Remodel Review</h1>
+      <p>Generated ${esc(new Date().toLocaleString())}</p>
+      <p>Prod: ${esc(state.files.prod.name)} · Remodel: ${esc(state.files.remodel.name)}</p>
+      ${state.notes.setup ? `<p class="print-notes">${esc(state.notes.setup)}</p>` : ''}
+    </div>${sections.join('')}`;
+  root.querySelectorAll('details').forEach(d => { d.open = true; });   // e.g. the collapsible Channel changes card
+  window.print();
+}
+$('#exportPdfBtn').addEventListener('click', exportPdf);
+
 /* Rehydrates a copy opened with window.__EXPORT_STATE__ baked in — same effect as re-uploading both files,
    redoing the bucket/outcome setup and clicking "Run review", but instant and from the baked-in data. */
 function hydrateFromExport(data) {
@@ -1349,13 +1512,17 @@ function hydrateFromExport(data) {
   state.channelFlags = data.channelFlags || {};
   state.channelChanges = data.channelChanges || [];
   state.mapBuckets = new Map(data.mapBuckets || []);
-  state.notes = Object.assign({ setup: '', mix: '', paid: '', detail: '' }, data.notes);
+  state.notes = Object.assign({ setup: '', mix: '', paid: '', detail: '', compare: '' }, data.notes);
   $('#notesSetup').value = state.notes.setup;
   Object.assign(state.view, data.view || {});
   refreshSetup();
   document.querySelectorAll('.tab-btn').forEach(b => b.disabled = false);
   $('#exportReportBtn').disabled = false; $('#exportReportBtn').title = '';
-  setTab(['mix', 'paid', 'detail'].includes(state.view.tab) ? state.view.tab : 'mix');
+  $('#exportPdfBtn').disabled = false; $('#exportPdfBtn').title = '';
+  // A working copy is meant to be shared externally, so the Setup tab (upload, mapping, buckets) is hidden —
+  // recipients only see the finished report tabs, with no path back into re-configuring anything.
+  $('#tabs [data-tab="setup"]').style.display = 'none';
+  setTab(['mix', 'paid', 'detail', 'compare'].includes(state.view.tab) ? state.view.tab : 'mix');
 }
 
 /* Resumes automatically from what was saved to this browser (persist(), above) — same underlying data shape as
@@ -1367,9 +1534,10 @@ function restoreSavedSetup() {
   $('#badge-prod').textContent = `${state.files.prod.name} · restored from your last session`;
   $('#badge-remodel').textContent = `${state.files.remodel.name} · restored from your last session`;
   refreshSetup();
-  if (['mix', 'paid', 'detail'].includes(state.view.tab)) {
+  if (['mix', 'paid', 'detail', 'compare'].includes(state.view.tab)) {
     document.querySelectorAll('.tab-btn').forEach(b => b.disabled = false);
     $('#exportReportBtn').disabled = false; $('#exportReportBtn').title = '';
+  $('#exportPdfBtn').disabled = false; $('#exportPdfBtn').title = '';
     setTab(state.view.tab);
   }
 }
