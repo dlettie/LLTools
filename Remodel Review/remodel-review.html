@@ -231,7 +231,7 @@ const state = {
   bucketOverrides: {}, outcomeGroups: {}, outcomeExclude: {}, channelFlags: {}, channelChanges: [],
   notes: { setup: '', mix: '', paid: '', detail: '' },
   channels: new Map(),                        // normKey -> {name, segs:{prod,remodel}, rev:{prod,remodel}}
-  view: { tab: 'setup', cat: '__all__', out: '__all__', level: 'channel', dsort: { P: { key: 'val', k: null, m: 'rev', dir: -1 }, R: { key: 'val', k: null, m: 'rev', dir: -1 } }, detailN: 0, detailMetric: 'rev', detailMode: 'both', detailOff: {}, detailCatOff: {}, detailDD: {}, detailSpendCat: {}, detailBucketCollapsed: {}, topN: 15, paidMode: 'pct', mixOff: {}, mixCatOff: {}, mixDD: {}, mixMode: 'both', mixMetric: 'pct', bucketFilter: 'all' },
+  view: { tab: 'setup', cat: '__all__', out: '__all__', level: 'channel', dsort: { P: { key: 'val', k: null, m: 'rev', dir: -1 }, R: { key: 'val', k: null, m: 'rev', dir: -1 } }, detailN: 0, detailMetric: 'rev', detailMode: 'both', detailOff: {}, detailCatOff: {}, detailDD: {}, detailSpendCat: {}, detailBucketCollapsed: {}, detailChangeFilter: '', topN: 15, paidMode: 'pct', mixOff: {}, mixCatOff: {}, mixDD: {}, mixMode: 'both', mixMetric: 'pct', bucketFilter: 'all' },
 };
 /* Restoring saved setup: `files` (aggregated data + column mapping, no raw rows) and `mapBuckets` are only
    present in the saved JSON once they're actually ready, so a stale/missing value never clobbers the fresh
@@ -1146,9 +1146,13 @@ function detailSideView(W) {
   if (!catItems.length || !outItems.length) { const empty = `<div class="empty">${SIDE_NAME[W]} has no rows.</div>`; return { html: `<div class="card" style="padding:0">${head}${empty}</div>`, tableHtml: empty, list: [], cols, outItems, catItems, n: 0, shown: 0 }; }
 
   const q = norm($('#detailSearch')?.value || '');
+  // Illustrating a logged channel change: show only the Pre (Prod) channels on the Prod side and the Post
+  // (Remodel) channels on the Remodel side, so the two tables read as a live before/after for that change.
+  const changeRow = state.channelChanges.find(r => r.id === v.detailChangeFilter && r.saved);
+  const changeKeys = changeRow ? new Set(changeRow[W === 'P' ? 'from' : 'to']) : null;
   const rowMap = new Map();
   for (const c of cols) for (const [key, e] of c.rows) if ((e.spend || e.rev) && !rowMap.has(key)) rowMap.set(key, { key, name: e.name, chKey: e.chKey, bucket: e.bucket });
-  const list = [...rowMap.values()].filter(r => (v.bucketFilter === 'all' || r.bucket === v.bucketFilter) && (!q || norm(r.name).includes(q)));
+  const list = [...rowMap.values()].filter(r => (v.bucketFilter === 'all' || r.bucket === v.bucketFilter) && (!q || norm(r.name).includes(q)) && (!changeKeys || changeKeys.has(r.chKey)));
   const sc = cols.find(c => c.id === st.k) || cols[0];
   // Total revenue sums the outcome columns actually shown to its right (the ticked categories/outcomes), unlike
   // Spend and iROAS which are always scoped to all outcomes regardless of what's ticked.
@@ -1156,7 +1160,7 @@ function detailSideView(W) {
   const val = r => st.key === 'name' ? r.name.toLowerCase() : st.key === 'spend' ? spendOf.get(r.key) ?? null : st.key === 'totrev' ? rowTotRev(r) : st.key === 'roas' ? roasOf(r) : sc?.rows.get(r.key)?.[metric] ?? null;
   list.sort((a, b) => { const x = val(a), y = val(b); if (x == null && y == null) return 0; if (x == null) return 1; if (y == null) return -1; return (x < y ? -1 : x > y ? 1 : 0) * st.dir; });
   // rows are grouped by bucket; the sort applies within each group, and "Show" limits each group
-  const groups = ['paid', 'unpaid', 'baseline', 'unassigned'].map(b => { const all = list.filter(r => r.bucket === b); return { b, all, rows: v.detailN ? all.slice(0, v.detailN) : all }; }).filter(g => g.all.length);
+  const groups = ['paid', 'unpaid', 'baseline', 'unassigned'].map(b => { const all = list.filter(r => r.bucket === b); return { b, all, rows: v.detailN && !changeKeys ? all.slice(0, v.detailN) : all }; }).filter(g => g.all.length);
   const n = list.length, shown = groups.reduce((t, g) => t + g.rows.length, 0);
   const dirMark = ' ' + (st.dir > 0 ? '▲' : '▼');
   const lvl = v.level === 'tactic' ? 'Channel › tactic' : 'Channel';
@@ -1193,11 +1197,16 @@ function renderDetail() {
   const v = state.view;
   const V = { P: detailSideView('P'), R: detailSideView('R') };
   const focus = document.activeElement?.id === 'detailSearch' ? document.activeElement.selectionStart : null;
+  const changeOpts = state.channelChanges.filter(r => r.saved);
+  const changeFilterSelect = `<div style="min-width:220px"><label>Illustrate change</label><select id="changeFilterSel"><option value="">All channels</option>${changeOpts.map(r => `<option value="${esc(r.id)}" ${v.detailChangeFilter === r.id ? 'selected' : ''}>${esc(r.title || 'Untitled change')} (${esc(ccType(r).label)})</option>`).join('')}</select></div>`;
+  const activeChange = changeOpts.find(r => r.id === v.detailChangeFilter);
+  const changeNote = activeChange ? `<p class="hint" style="margin:10px 0 0">Showing only <b>${esc(activeChange.title || 'Untitled change')}</b>’s Pre channel(s) on Prod and Post channel(s) on Remodel — search, bucket and “Show” still apply within that.</p>` : '';
   $('#view').innerHTML = `${channelChangesCard()}${notesCard('detail', false)}<div class="card"><div class="filters">
       <div style="flex:1"><label>Search</label><input type="text" id="detailSearch" placeholder="Filter by channel…" value="${esc($('#detailSearch')?.value || '')}"></div>
       <div><label>Bucket</label><select id="bucketSel"><option value="all">All buckets</option>${[...BUCKETS, ['unassigned', 'Unassigned']].map(([b, l]) => `<option value="${b}" ${v.bucketFilter === b ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
       <div><label>Show</label><select id="detailN">${[15, 25, 50, 0].map(k => `<option value="${k}" ${v.detailN === k ? 'selected' : ''}>${k ? 'Top ' + k : 'All'}</option>`).join('')}</select></div>
-      <div><button class="btn" id="exportCsv">Export CSV</button></div></div>
+      ${changeFilterSelect}
+      <div><button class="btn" id="exportCsv">Export CSV</button></div></div>${changeNote}
     <div class="filters" style="margin-top:12px"><div><label>View</label><div class="vslider" id="vslider"><span class="thumb" style="transform:translateX(${MODES.indexOf(v.detailMode) * 100}%)"></span>${MODES.map(m => `<button data-m="${m}" class="${m === v.detailMode ? 'on' : ''}">${{ prod: 'Prod', both: 'Both', remodel: 'Remodel' }[m]}</button>`).join('')}</div></div>
     <div><label>Metric tab</label><div class="seg" id="detailMetric">${DETAIL_METRICS.filter(([m]) => m !== 'spend').map(([m, l]) => `<button data-v="${m}" class="${m === v.detailMetric ? 'on' : ''}">${l}</button>`).join('')}</div></div></div></div><div class="slide" id="slide" data-mode="${v.detailMode}">${V.P.html}${V.R.html}</div>`;
   const sIn = $('#detailSearch'); if (focus != null) { sIn.focus(); sIn.setSelectionRange(focus, focus); }
@@ -1211,6 +1220,7 @@ function renderDetail() {
   });
   $('#bucketSel').addEventListener('change', e => { v.bucketFilter = e.target.value; renderDetail(); });
   $('#detailN').addEventListener('change', e => { v.detailN = +e.target.value; renderDetail(); });
+  $('#changeFilterSel').addEventListener('change', e => { v.detailChangeFilter = e.target.value; renderDetail(); });
   $('#exportCsv').addEventListener('click', () => exportCsv(V));
   const tick = (attr, store) => {
     $('#view').querySelectorAll(`[${attr}]`).forEach(cb => cb.addEventListener('change', () => { const o = (store[cb.dataset.dw] ||= {}), k = cb.getAttribute(attr); if (cb.checked) delete o[k]; else o[k] = true; renderDetail(); }));
