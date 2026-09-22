@@ -231,7 +231,7 @@ const state = {
   bucketOverrides: {}, outcomeGroups: {}, outcomeExclude: {}, channelFlags: {}, channelChanges: [],
   notes: { setup: '', mix: '', paid: '', detail: '' },
   channels: new Map(),                        // normKey -> {name, segs:{prod,remodel}, rev:{prod,remodel}}
-  view: { tab: 'setup', cat: '__all__', out: '__all__', level: 'channel', dsort: { P: { key: 'val', k: null, m: 'rev', dir: -1 }, R: { key: 'val', k: null, m: 'rev', dir: -1 } }, detailN: 0, detailMetric: 'rev', detailMode: 'both', detailOff: {}, detailCatOff: {}, detailDD: {}, detailSpendCat: {}, detailBucketCollapsed: {}, detailChangeFilter: '', topN: 15, paidMode: 'pct', mixOff: {}, mixCatOff: {}, mixDD: {}, mixMode: 'both', mixMetric: 'pct', bucketFilter: 'all' },
+  view: { tab: 'setup', cat: '__all__', out: '__all__', level: 'channel', dsort: { P: { key: 'val', k: null, m: 'rev', dir: -1 }, R: { key: 'val', k: null, m: 'rev', dir: -1 } }, detailN: 0, detailMetric: 'rev', detailMode: 'both', detailOff: {}, detailCatOff: {}, detailDD: {}, detailSpendCat: {}, detailBucketCollapsed: {}, detailChangeFilter: '', topN: 15, paidMode: 'pct', psort: { P: { key: 'rev', dir: -1 }, R: { key: 'rev', dir: -1 } }, mixOff: {}, mixCatOff: {}, mixDD: {}, mixMode: 'both', mixMetric: 'pct', bucketFilter: 'all' },
 };
 /* Restoring saved setup: `files` (aggregated data + column mapping, no raw rows) and `mapBuckets` are only
    present in the saved JSON once they're actually ready, so a stale/missing value never clobbers the fresh
@@ -1057,11 +1057,14 @@ function renderMix() {
 
 /* ---------- 2. paid contribution ---------- */
 /* One side of the table: paid channels ranked by revenue. Shares are of PAID spend / PAID revenue (not total revenue). */
-function paidSide(S) {
+function paidSide(S, sort) {
   const rows = S.rows.filter(r => r.bucket === 'paid' && (r.rev !== 0 || r.spend !== 0));
   const totRev = rows.reduce((t, r) => t + r.rev, 0), totSpend = rows.reduce((t, r) => t + r.spend, 0);
-  const list = rows.map(r => ({ name: r.tac ? `${r.ch} › ${r.tac}` : r.ch, chKey: r.chKey, spend: r.spend, rev: r.rev, spendShare: div(r.spend, totSpend), revShare: div(r.rev, totRev) }))
-    .sort((a, b) => (b.revShare ?? -Infinity) - (a.revShare ?? -Infinity));
+  const list = rows.map(r => ({ name: r.tac ? `${r.ch} › ${r.tac}` : r.ch, chKey: r.chKey, spend: r.spend, rev: r.rev, spendShare: div(r.spend, totSpend), revShare: div(r.rev, totRev) }));
+  // Spend/revenue share is just spend/revenue divided by the same total, so sorting by share and by the raw
+  // number always agree — one sort key covers both display modes.
+  const { key, dir } = sort;
+  list.sort((a, b) => key === 'name' ? a.name.localeCompare(b.name) * dir : ((a[key] ?? -Infinity) - (b[key] ?? -Infinity)) * dir);
   return { list, totRev, totSpend };
 }
 
@@ -1069,7 +1072,7 @@ function renderPaid() {
   const v = state.view, P = slice('prod', v.cat, v.out, v.level), R = slice('remodel', v.cat, v.out, v.level);
   if (!P.has && !R.has) { $('#view').innerHTML = '<div class="empty">No data for this selection.</div>'; return; }
   const raw = v.paidMode === 'raw';
-  const sp = paidSide(P), sr = paidSide(R), n = Math.max(sp.list.length, sr.list.length), shown = v.topN ? Math.min(v.topN, n) : n;
+  const sp = paidSide(P, v.psort.P), sr = paidSide(R, v.psort.R), n = Math.max(sp.list.length, sr.list.length), shown = v.topN ? Math.min(v.topN, n) : n;
   const spendOf = e => raw ? fmtMoney(e.spend) : fmtPct(e.spendShare), revOf = e => raw ? fmtMoney(e.rev) : fmtPct(e.revShare);
   const cells = (e, i, cls = '', isRemodel = false) => e
     ? `<td class="num ${cls}"><span class="rank">${i + 1}</span></td><td class="wrap">${esc(e.name)}${isRemodel ? newBadge(e.chKey) : ''}</td><td class="num">${spendOf(e)}</td><td class="num">${revOf(e)}</td>`
@@ -1081,16 +1084,27 @@ function renderPaid() {
     : `<td class="${cls}"></td><td></td><td></td><td></td>`;
   const lvl = v.level === 'tactic' ? 'Channel › tactic' : 'Channel';
   const sh = raw ? ['Spend', 'Revenue'] : ['% of paid spend', '% of paid revenue'];
+  // Prod and Remodel are ranked independently — the "#" pairs the Nth-ranked channel on each side, which needn't
+  // be the same channel, so each side gets its own sortable columns and sort state.
+  const head = (side, sepl) => {
+    const st = v.psort[side], mk = k => st.key === k ? (st.dir > 0 ? ' ▲' : ' ▼') : '';
+    return `<th${sepl ? ' class="sepl"' : ''}>#</th><th class="sortable" data-ps="${side}" data-sk="name">${lvl}${mk('name')}</th><th class="sortable" data-ps="${side}" data-sk="spend">${sh[0]}${mk('spend')}</th><th class="sortable" data-ps="${side}" data-sk="rev">${sh[1]}${mk('rev')}</th>`;
+  };
   $('#view').innerHTML = `${notesCard('paid')}<div class="card"><div class="filters">
       <div><label>Values</label><div class="seg" id="paidMode"><button data-v="pct" class="${raw ? '' : 'on'}">Percentages</button><button data-v="raw" class="${raw ? 'on' : ''}">Raw numbers</button></div></div>
       <div><label>Show</label><select id="topN">${[10, 15, 25, 50, 0].map(k => `<option value="${k}" ${v.topN === k ? 'selected' : ''}>${k ? 'Top ' + k : 'All'}</option>`).join('')}</select></div></div></div>
     <div class="card" style="padding:0"><div class="tablewrap"><table><thead>
       <tr><th colspan="4" class="grp">Prod</th><th colspan="4" class="grp sepl">Remodel</th></tr>
-      <tr><th>#</th><th>${lvl}</th><th>${sh[0]}</th><th>${sh[1]}</th><th class="sepl">#</th><th>${lvl}</th><th>${sh[0]}</th><th>${sh[1]}</th></tr>
+      <tr>${head('P', false)}${head('R', true)}</tr>
       </thead><tbody>${body || '<tr><td colspan="8" class="empty">No paid channels. Check bucket assignments in Setup.</td></tr>'}
       <tr class="total">${total(P.has, sp)}${total(R.has, sr, 'sepl')}</tr></tbody></table></div></div>`;
   $('#paidMode').addEventListener('click', e => { const b = e.target.closest('button'); if (b) { v.paidMode = b.dataset.v; renderPaid(); } });
   $('#topN').addEventListener('change', e => { v.topN = +e.target.value; renderPaid(); });
+  $('#view').querySelectorAll('[data-ps]').forEach(h => h.addEventListener('click', () => {
+    const side = h.dataset.ps, key = h.dataset.sk, st = v.psort[side];
+    v.psort[side] = { key, dir: st.key === key ? -st.dir : (key === 'name' ? 1 : -1) };
+    renderPaid();
+  }));
   wireNotes($('#view'));
 }
 
