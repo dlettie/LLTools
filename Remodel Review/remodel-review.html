@@ -105,6 +105,7 @@
     .ddown[open] summary::after { content: '▴'; }
     .ddown[open] summary { border-bottom: 1px solid var(--border); }
     .ddown-panel { max-height: 260px; overflow: auto; padding: 10px 12px; }
+    #ccCard summary::-webkit-details-marker { display: none; }
   </style>
 </head>
 <body>
@@ -126,9 +127,10 @@
   <section id="tab-setup">
     <div class="card">
       <h2>Upload</h2>
-      <p class="hint">Drop in the model workbook. The tool finds the Prod and Remodel sheets by name (e.g. <b>Prod_data</b>, <b>Remodel_data</b>), or upload two files with “prod” and “remodel” in their names. .xlsx or .csv.</p>
+      <p class="hint">Drop in the model workbook. The tool finds the Prod and Remodel sheets by name (e.g. <b>Prod_data</b>, <b>Remodel_data</b>), or upload two files with “prod” and “remodel” in their names. .xlsx or .csv. Your setup — files, mapping, buckets, outcomes and notes — is saved in this browser automatically, so reloading or coming back later picks up right where you left off.</p>
       <input type="file" id="uploadInput" accept=".xlsx,.xls,.csv" multiple>
       <div class="filebadge" id="uploadStatus"></div>
+      <div class="setup-actions" style="margin-top:10px"><button class="btn" id="forgetSetupBtn" title="Clears everything saved in this browser and starts fresh">Forget saved setup</button></div>
     </div>
     <div class="grid2">
       <div class="card" id="slot-prod"></div>
@@ -229,10 +231,36 @@ const state = {
   bucketOverrides: {}, outcomeGroups: {}, outcomeExclude: {}, channelFlags: {}, channelChanges: [],
   notes: { setup: '', mix: '', paid: '', detail: '' },
   channels: new Map(),                        // normKey -> {name, segs:{prod,remodel}, rev:{prod,remodel}}
-  view: { tab: 'setup', cat: '__all__', out: '__all__', level: 'channel', dsort: { P: { key: 'val', k: null, m: 'rev', dir: -1 }, R: { key: 'val', k: null, m: 'rev', dir: -1 } }, detailN: 0, detailMetric: 'rev', detailMode: 'both', detailOff: {}, detailCatOff: {}, detailDD: {}, topN: 15, paidMode: 'pct', mixOff: {}, mixCatOff: {}, mixDD: {}, mixMode: 'both', mixMetric: 'pct', bucketFilter: 'all' },
+  view: { tab: 'setup', cat: '__all__', out: '__all__', level: 'channel', dsort: { P: { key: 'val', k: null, m: 'rev', dir: -1 }, R: { key: 'val', k: null, m: 'rev', dir: -1 } }, detailN: 0, detailMetric: 'rev', detailMode: 'both', detailOff: {}, detailCatOff: {}, detailDD: {}, detailSpendCat: {}, detailBucketCollapsed: {}, topN: 15, paidMode: 'pct', mixOff: {}, mixCatOff: {}, mixDD: {}, mixMode: 'both', mixMetric: 'pct', bucketFilter: 'all' },
 };
-try { Object.assign(state, JSON.parse(localStorage.getItem(STORE_KEY) || '{}')); } catch (e) {}
-const persist = () => { try { localStorage.setItem(STORE_KEY, JSON.stringify({ bucketOverrides: state.bucketOverrides, outcomeGroups: state.outcomeGroups, outcomeExclude: state.outcomeExclude, channelFlags: state.channelFlags, channelChanges: state.channelChanges, notes: state.notes })); } catch (e) {} };
+/* Restoring saved setup: `files` (aggregated data + column mapping, no raw rows) and `mapBuckets` are only
+   present in the saved JSON once they're actually ready, so a stale/missing value never clobbers the fresh
+   defaults above. `mapBuckets` comes back as a plain array (JSON has no Map type) and is converted back;
+   `viewTab` is applied to state.view.tab separately so it doesn't blow away the rest of the default view. */
+try {
+  const saved = JSON.parse(localStorage.getItem(STORE_KEY) || '{}');
+  Object.assign(state, saved);
+  if (Array.isArray(state.mapBuckets)) state.mapBuckets = new Map(state.mapBuckets);
+  if (saved.viewTab) state.view.tab = saved.viewTab;
+} catch (e) {}
+const persist = () => {
+  try {
+    const payload = {
+      bucketOverrides: state.bucketOverrides, outcomeGroups: state.outcomeGroups, outcomeExclude: state.outcomeExclude,
+      channelFlags: state.channelFlags, channelChanges: state.channelChanges, notes: state.notes,
+      mapBuckets: [...state.mapBuckets], viewTab: state.view.tab,
+    };
+    // Only save file data once both sides are fully aggregated — never a half-loaded state, and never overwrite
+    // a previously-saved complete setup with an in-progress one.
+    if (state.files.prod?.agg && state.files.remodel?.agg) {
+      payload.files = {
+        prod: { name: state.files.prod.name, agg: state.files.prod.agg, spendRepeats: state.files.prod.spendRepeats, map: state.files.prod.map },
+        remodel: { name: state.files.remodel.name, agg: state.files.remodel.agg, spendRepeats: state.files.remodel.spendRepeats, map: state.files.remodel.map },
+      };
+    }
+    localStorage.setItem(STORE_KEY, JSON.stringify(payload));
+  } catch (e) {}
+};
 
 /* ============================== file loading ============================== */
 function renderSlot(which) {
@@ -353,16 +381,18 @@ function aggregate(which) {
   f.agg = [...map.values()]; f.skipped = skipped;
   f.spendRepeats = detectRepeatedSpend(f.agg);
   $('#rep-' + which).innerHTML = `<label style="margin-top:12px;display:flex;gap:8px;align-items:flex-start;font-weight:500"><input type="checkbox" ${f.spendRepeats ? 'checked' : ''} style="margin-top:3px"><span>Spend is repeated on each outcome / category row — count it once when combining${f.spendRepeats ? ' <span class="muted">(detected)</span>' : ''}</span></label>`;
-  $('#rep-' + which + ' input').addEventListener('change', e => { f.spendRepeats = e.target.checked; });
+  $('#rep-' + which + ' input').addEventListener('change', e => { f.spendRepeats = e.target.checked; persist(); });
   badge.textContent = `${f.name} · ${f.rows.length.toLocaleString()} rows → ${f.agg.length.toLocaleString()} channel/outcome combos` + (skipped ? ` · ${skipped} rows skipped (blank channel or total)` : '');
   refreshSetup();
+  persist();   // saves the aggregated data + column mapping so this setup survives a reload
 }
 
-/* Many model exports repeat a channel's total spend on every outcome row while revenue is split by outcome.
-   Detect that (same spend across outcomes within a category/channel/tactic) so combined views don't multiply spend. */
+/* Many model exports repeat a channel's total spend on every outcome AND category row while revenue is split
+   by both. Detect that (same spend across every row for a channel/tactic, regardless of outcome or category)
+   so combined views don't multiply spend when more outcomes or categories are ticked. */
 function detectRepeatedSpend(agg) {
   const g = new Map();
-  for (const a of agg) { if (!a.spend) continue; const k = [a.cat, a.ch, a.tac].join('\u0001'); (g.get(k) || g.set(k, []).get(k)).push(a.spend); }
+  for (const a of agg) { if (!a.spend) continue; const k = [a.ch, a.tac].join('\u0001'); (g.get(k) || g.set(k, []).get(k)).push(a.spend); }
   let multi = 0, same = 0;
   for (const v of g.values()) if (v.length > 1) { multi++; const mx = Math.max(...v), mn = Math.min(...v); if (mx - mn <= mx * 0.005) same++; }
   return multi >= 3 && same / multi > 0.7;
@@ -435,6 +465,7 @@ function applyMapping() {
     }
   }
   refreshSetup();
+  persist();
 }
 const listNames = (a, n = 8) => esc(a.slice(0, n).join(', ')) + (a.length > n ? ` … +${a.length - n} more` : '');
 function renderMapCard() {
@@ -718,6 +749,7 @@ function wireNotes(root) {
    into one Remodel channel) and breakouts (one Prod channel split into several) all use the same shape: a
    checklist of Prod channels on one side and a checklist of Remodel channels on the other that "became" them —
    tick one on each side for a rename, several Prod for a combination, several Remodel for a breakout. */
+let ccCardOpen = true;           // whether the whole Channel changes card is expanded — survives the re-render any edit inside it triggers
 const ccDDOpen = new Set();      // which row's Prod/Remodel checklist is open (e.g. "id:from") — survives the re-render a checkbox click triggers
 const ccScrollTop = new Map();   // same key -> that panel's scroll position, so a checkbox click near the bottom of a long list doesn't snap it back to the top
 const ccSearchQ = new Map();     // same key -> the in-panel search text
@@ -737,17 +769,21 @@ function ccChecklist(rowId, side, picked) {
       </div>
     </details>`;
 }
-/* The four kinds of change, and how each looks as a pill. Keyed so a row can either pick one explicitly
+/* The five kinds of change, and how each looks as a pill. Keyed so a row can either pick one explicitly
    (r.type) or leave it on "Auto", in which case ccAutoType() reads it off the pick counts. */
 const CC_TYPE_META = {
   consolidation: { label: 'Consolidation', bg: 'rgba(20,184,166,.15)', fg: 'var(--primary-dark)' },
   breakout: { label: 'Breakout', bg: 'rgba(245,158,11,.15)', fg: '#b45309' },
   regrouping: { label: 'Regrouping', bg: 'rgba(139,92,246,.15)', fg: '#6d28d9' },
   rename: { label: 'Rename', bg: 'rgba(107,114,128,.15)', fg: 'var(--muted)' },
+  netnew: { label: 'Net new', bg: 'rgba(59,130,246,.15)', fg: '#1d4ed8' },
 };
+const ccIsNetNew = r => (r.type || ccAutoType(r)) === 'netnew';
 /* several Prod → one Remodel is a consolidation, one Prod → several Remodel is a breakout, several → several
-   is a regrouping, one → one is a straight rename — just a starting guess; the Type picker below can override it. */
+   is a regrouping, one → one is a straight rename, no Prod side at all is net new — just a starting guess;
+   the Type picker below can override it. */
 function ccAutoType(r) {
+  if (!r.from.length) return 'netnew';
   if (r.from.length > 1 && r.to.length > 1) return 'regrouping';
   if (r.from.length > 1) return 'consolidation';
   if (r.to.length > 1) return 'breakout';
@@ -759,22 +795,26 @@ function ccType(r) {
 }
 /* A section box — "Pre" (Prod) on the left, "Post" (Remodel) on the right — used both while editing (holds the
    checklist) and once saved (holds the chips), so the two sides read as distinct before/after panels rather
-   than one line with an arrow in the middle. */
-function ccSection(label, inner) {
-  return `<div style="flex:1;min-width:0;border:1px solid var(--border-strong);border-radius:8px;padding:10px 12px;background:#fafbfc">
+   than one line with an arrow in the middle. `greyed` mutes it (used for Pre on a net-new row, which has no
+   Prod side at all). */
+function ccSection(label, inner, greyed = false) {
+  return `<div style="flex:1;min-width:0;border:1px solid var(--border-strong);border-radius:8px;padding:10px 12px;background:#fafbfc${greyed ? ';opacity:.5' : ''}">
       <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px">${label}</div>
       ${inner}
     </div>`;
 }
 /* The saved, "show what's changing" view of a row: Pre and Post boxes each holding chips for their channels,
-   with the change type as a pill above them. */
+   with the change type as a pill above them. A net-new row has no Prod side at all, so it skips the Pre/Post
+   split entirely and just lists the Remodel channel(s) under one "Net new" box. */
 function ccVisual(r) {
   const names = side => r[side].map(k => state.channels.get(k)?.name || k);
-  const type = ccType(r);
+  const type = ccType(r), netNew = ccIsNetNew(r);
   const chip = (n, bg, fg) => `<span class="pill" style="background:${bg};color:${fg};font-weight:600">${esc(n)}</span>`;
   const chips = (side, bg, fg) => `<div style="display:flex;flex-wrap:wrap;gap:6px">${names(side).map(n => chip(n, bg, fg)).join('')}</div>`;
+  const typePill = `<div style="margin-bottom:8px"><span class="pill" style="background:${type.bg};color:${type.fg};font-weight:700">${type.label}</span></div>`;
+  if (netNew) return `<div>${typePill}${ccSection('Net new', chips('to', 'var(--primary)', '#fff'))}</div>`;
   return `<div>
-      <div style="margin-bottom:8px"><span class="pill" style="background:${type.bg};color:${type.fg};font-weight:700">${type.label}</span></div>
+      ${typePill}
       <div style="display:flex;gap:12px;align-items:stretch">
         ${ccSection('Pre · Prod', chips('from', 'var(--border-strong)', 'var(--text)'))}
         <div style="align-self:center;color:var(--muted);font-weight:700;font-size:16px">→</div>
@@ -782,7 +822,7 @@ function ccVisual(r) {
       </div>
     </div>`;
 }
-/* The Type picker: "Auto" (default) shows what the pick counts imply, or pin it to one of the four kinds explicitly. */
+/* The Type picker: "Auto" (default) shows what the pick counts imply, or pin it to one of the five kinds explicitly. */
 function ccTypeSelect(r) {
   const auto = CC_TYPE_META[ccAutoType(r)].label;
   return `<select data-cc-type="${esc(r.id)}" style="width:auto;display:inline-block;padding:5px 8px">
@@ -792,20 +832,24 @@ function ccTypeSelect(r) {
 }
 function channelChangesCard() {
   const rows = state.channelChanges.map(r => {
-    const ready = r.from.length && r.to.length;
+    const netNew = ccIsNetNew(r);
+    const ready = r.to.length && (netNew || r.from.length);
     const iconBtn = 'padding:5px 9px;font-size:14px;line-height:1';
+    const picker = netNew
+      ? `<div style="display:flex;gap:12px;align-items:stretch">${ccSection('Net new', ccChecklist(r.id, 'to', r.to))}</div>`
+      : `<div style="display:flex;gap:12px;align-items:stretch">
+           ${ccSection('Pre · Prod', ccChecklist(r.id, 'from', r.from))}
+           <div style="align-self:center;color:var(--muted);font-weight:700;font-size:16px">→</div>
+           ${ccSection('Post · Remodel', ccChecklist(r.id, 'to', r.to))}
+         </div>`;
     const body = r.saved
       ? `<div style="margin-bottom:10px;font-weight:600">${r.title ? esc(r.title) : '<span class="muted" style="font-weight:500">Untitled change</span>'}</div>${ccVisual(r)}`
       : `<div style="display:flex;gap:10px;align-items:center;margin-bottom:10px">
            <input type="text" class="notes-input" data-cc-title="${esc(r.id)}" placeholder="Title this change (e.g. “Search consolidation”)" value="${esc(r.title || '')}" style="font-weight:600;margin-bottom:0;flex:1">
            <label style="margin:0;white-space:nowrap">Type</label>${ccTypeSelect(r)}
          </div>
-         <div style="display:flex;gap:12px;align-items:stretch">
-           ${ccSection('Pre · Prod', ccChecklist(r.id, 'from', r.from))}
-           <div style="align-self:center;color:var(--muted);font-weight:700;font-size:16px">→</div>
-           ${ccSection('Post · Remodel', ccChecklist(r.id, 'to', r.to))}
-         </div>
-         <div style="margin-top:10px"><button class="btn primary" data-cc-save="${esc(r.id)}" ${ready ? '' : 'disabled'} title="${ready ? '' : 'Pick at least one Prod and one Remodel channel first'}">Save</button></div>`;
+         ${picker}
+         <div style="margin-top:10px"><button class="btn primary" data-cc-save="${esc(r.id)}" ${ready ? '' : 'disabled'} title="${ready ? '' : netNew ? 'Pick at least one Remodel channel first' : 'Pick at least one Prod and one Remodel channel first'}">Save</button></div>`;
     return `<div class="ccRow" data-cc-id="${esc(r.id)}" style="padding:12px 0;border-bottom:1px solid var(--border)">
       <div style="display:flex;gap:12px;align-items:flex-start">
         <div style="flex:1;min-width:0">${body}</div>
@@ -816,9 +860,14 @@ function channelChangesCard() {
       </div>
     </div>`;
   }).join('') || '<div class="muted" style="padding:8px 0">No channel changes logged yet.</div>';
-  return `<div class="card"><h2>Channel changes</h2>
-    <div id="ccList">${rows}</div>
-    <button class="btn" id="ccAdd" style="margin-top:10px">+ Add channel change</button>
+  return `<div class="card">
+    <details id="ccCard" ${ccCardOpen ? 'open' : ''}>
+      <summary style="cursor:pointer;list-style:none;display:flex;align-items:center;gap:6px"><h2 style="margin:0">Channel changes</h2><span class="muted" style="font-size:11px">${ccCardOpen ? '▾' : '▸'}</span></summary>
+      <div style="padding-top:10px">
+        <div id="ccList">${rows}</div>
+        <button class="btn" id="ccAdd" style="margin-top:10px">+ Add channel change</button>
+      </div>
+    </details>
   </div>`;
 }
 function wireChannelChanges(root) {
@@ -847,7 +896,9 @@ function wireChannelChanges(root) {
   }));
   root.querySelectorAll('[data-cc-type]').forEach(s => s.addEventListener('change', e => {
     const r = state.channelChanges.find(x => x.id === e.target.dataset.ccType); if (!r) return;
-    r.type = e.target.value; persist(); renderDetail();
+    r.type = e.target.value;
+    if (ccIsNetNew(r)) r.from = [];   // net new has no Prod side — drop any picks the greyed-out box would otherwise hide
+    persist(); renderDetail();
   }));
   root.querySelectorAll('[data-cc-ch]').forEach(cb => cb.addEventListener('change', () => {
     const r = state.channelChanges.find(x => x.id === cb.dataset.ccRow); if (!r) return;
@@ -859,6 +910,7 @@ function wireChannelChanges(root) {
     const key = d.dataset.ccOpen;
     if (d.open) ccDDOpen.add(key); else ccDDOpen.delete(key);
   }));
+  root.querySelector('#ccCard')?.addEventListener('toggle', function () { ccCardOpen = this.open; });
   root.querySelectorAll('[data-cc-search]').forEach(inp => inp.addEventListener('input', e => {
     const key = e.target.dataset.ccSearch;
     ccSearchQ.set(key, e.target.value);
@@ -887,6 +939,7 @@ function setTab(tab) {
   $('#tab-analysis').hidden = tab === 'setup';
   $('.container').classList.toggle('wide', tab === 'detail' || tab === 'mix');   // two tables side by side need the room
   if (tab !== 'setup') { syncFilters(); render(); }
+  persist();   // so a reload resumes on the tab you were last on
 }
 $('#tabs').addEventListener('click', e => { const b = e.target.closest('.tab-btn'); if (b && !b.disabled) setTab(b.dataset.tab); });
 $('#goBtn').addEventListener('click', () => {
@@ -1064,13 +1117,16 @@ function detailSideView(W) {
   const F = state.files[file];
   const catItems = [[COMBINED, 'All'], ...allCategories()].filter(([c]) => c === COMBINED ? F.agg.length : F.agg.some(a => norm(a.cat) === c));
   const outItems = allOutcomes().map(o => [o, o]).filter(([k]) => catItems.some(([c]) => slice(file, c, k, v.level, true).has));
-  // Spend and iROAS are per channel (all outcomes, so unticked outcomes don't change them) and follow the ticked categories:
-  // "All" ticked = everything; otherwise the specific ticked categories are summed (so nothing is counted twice).
-  const allOn = !catOff[COMBINED] && catItems.some(([c]) => c === COMBINED);
-  const scopeCats = allOn ? catItems.filter(([c]) => c === COMBINED) : catItems.filter(([c]) => c !== COMBINED && !catOff[c]);
-  const scopeLabel = allOn ? 'all categories' : scopeCats.map(([, n]) => n).join(' + ') || 'none';
-  // If the file repeats a channel's total spend on every category row (the Setup checkbox), that spend must be counted once across
-  // categories (take the largest), not added up; revenue is always split by category, so it is summed.
+  // Spend and iROAS have their OWN category picker (a single choice, not the Categories checklist below), kept
+  // separate from the revenue columns so the two can be scoped independently — pick "All" or one specific
+  // category for Spend/iROAS regardless of which categories/outcomes are ticked for the revenue table.
+  const spendCatPick = v.detailSpendCat[W] ?? COMBINED;
+  const spendCat = catItems.some(([c]) => c === spendCatPick) ? spendCatPick : COMBINED;
+  const scopeCats = catItems.filter(([c]) => c === spendCat);
+  const scopeLabel = scopeCats[0]?.[1] ?? 'All';
+  // If the file repeats a channel's total spend on every outcome and category row (the Setup checkbox), that
+  // spend must be counted once across categories (take the largest), not added up; revenue is always split by
+  // category, so it is summed.
   const grand = new Map();
   for (const [c] of scopeCats) for (const r of slice(file, c, COMBINED, v.level, true).rows) {
     const g = grand.get(r.key) || { spend: 0, rev: 0 };
@@ -1085,7 +1141,8 @@ function detailSideView(W) {
   const cols = cgroups.flatMap(g => g.cols);
   const ddCat = ddown(v.detailDD, W, 'cat', 'Categories', 'data-dw', 'data-dc', catItems, catOff);
   const ddOut = outItems.length ? ddown(v.detailDD, W, 'out', 'Outcomes', 'data-dw', 'data-do', outItems, off) : '<span class="muted">No outcomes in this file.</span>';
-  const head = `<div style="padding:14px 16px 12px"><h3 style="margin:0 0 10px">${SIDE_NAME[W]}</h3><div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-start">${ddCat}${ddOut}</div></div>`;
+  const spendCatSelect = `<div><label style="display:block;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">Spend category</label><select data-spend-cat="${W}" style="padding:6px 8px;font-size:12px">${catItems.map(([c, name]) => `<option value="${esc(c)}" ${spendCat === c ? 'selected' : ''}>${esc(name)}</option>`).join('')}</select></div>`;
+  const head = `<div style="padding:14px 16px 12px"><h3 style="margin:0 0 10px">${SIDE_NAME[W]}</h3><div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-start">${ddCat}${ddOut}${spendCatSelect}</div></div>`;
   if (!catItems.length || !outItems.length) { const empty = `<div class="empty">${SIDE_NAME[W]} has no rows.</div>`; return { html: `<div class="card" style="padding:0">${head}${empty}</div>`, tableHtml: empty, list: [], cols, outItems, catItems, n: 0, shown: 0 }; }
 
   const q = norm($('#detailSearch')?.value || '');
@@ -1093,7 +1150,10 @@ function detailSideView(W) {
   for (const c of cols) for (const [key, e] of c.rows) if ((e.spend || e.rev) && !rowMap.has(key)) rowMap.set(key, { key, name: e.name, chKey: e.chKey, bucket: e.bucket });
   const list = [...rowMap.values()].filter(r => (v.bucketFilter === 'all' || r.bucket === v.bucketFilter) && (!q || norm(r.name).includes(q)));
   const sc = cols.find(c => c.id === st.k) || cols[0];
-  const val = r => st.key === 'name' ? r.name.toLowerCase() : st.key === 'spend' ? spendOf.get(r.key) ?? null : st.key === 'roas' ? roasOf(r) : sc?.rows.get(r.key)?.[metric] ?? null;
+  // Total revenue sums the outcome columns actually shown to its right (the ticked categories/outcomes), unlike
+  // Spend and iROAS which are always scoped to all outcomes regardless of what's ticked.
+  const rowTotRev = r => cols.reduce((t, c) => t + (c.rows.get(r.key)?.rev ?? 0), 0);
+  const val = r => st.key === 'name' ? r.name.toLowerCase() : st.key === 'spend' ? spendOf.get(r.key) ?? null : st.key === 'totrev' ? rowTotRev(r) : st.key === 'roas' ? roasOf(r) : sc?.rows.get(r.key)?.[metric] ?? null;
   list.sort((a, b) => { const x = val(a), y = val(b); if (x == null && y == null) return 0; if (x == null) return 1; if (y == null) return -1; return (x < y ? -1 : x > y ? 1 : 0) * st.dir; });
   // rows are grouped by bucket; the sort applies within each group, and "Show" limits each group
   const groups = ['paid', 'unpaid', 'baseline', 'unassigned'].map(b => { const all = list.filter(r => r.bucket === b); return { b, all, rows: v.detailN ? all.slice(0, v.detailN) : all }; }).filter(g => g.all.length);
@@ -1105,14 +1165,24 @@ function detailSideView(W) {
     for (const r of rowsIn) { const e = c.rows.get(r.key); if (e) { spend += e.spend; rev += e.rev; if (e.bucket === 'paid') paidRev += e.rev; } }
     return { spend, rev, share: div(rev, c.tot), roas: div(paidRev, spend) };   // total iROAS uses paid revenue only
   };
-  const nCols = 3 + cols.length;
+  const nCols = 4 + cols.length;
   const cells = colFn => cgroups.map(g => g.cols.map((c, ci) => `<td class="num ${ci ? '' : 'sepl'}">${colFn(c)}</td>`).join('')).join('');
   const lineRoas = (rowsIn, paidOnly) => { const sp = rowsIn.reduce((t, r) => t + (spendOf.get(r.key) || 0), 0); return div(rowsIn.filter(r => !paidOnly || r.bucket === 'paid').reduce((t, r) => t + (revOf.get(r.key) || 0), 0), sp); };
-  const line = (label, rowsIn, cls, paidOnly) => `<tr class="${cls}"><td class="wrap">${label}</td><td class="num">${fmtMoney(rowsIn.reduce((t, r) => t + (spendOf.get(r.key) || 0), 0))}</td><td class="num">${fmtX(lineRoas(rowsIn, paidOnly))}</td>${cells(c => fmtMetric(metric, total(c, rowsIn)[metric]))}</tr>`;
-  const body = groups.map(g => line(`<span class="dot b-${g.b}"></span>${BUCKET_LABEL[g.b]} <span class="muted">(${g.rows.length}${g.rows.length < g.all.length ? ' of ' + g.all.length : ''})</span>`, g.all, 'section')   // the group line carries the bucket subtotal (always all its rows)
-    + g.rows.map(r => `<tr><td class="wrap">${esc(r.name)}${W === 'R' ? newBadge(r.chKey) : ''}</td><td class="num">${fmtMoney(spendOf.get(r.key))}</td><td class="num">${fmtX(roasOf(r))}</td>${cells(c => fmtMetric(metric, c.rows.get(r.key)?.[metric]))}</tr>`).join('')).join('');
-  const table = !cols.length ? '<div class="empty">Check at least one category and outcome.</div>' : `<h3 style="padding:0 16px;margin:0 0 8px">${mLabel} <span class="muted" style="font-weight:500;font-size:12px">· Spend &amp; iROAS: ${esc(scopeLabel)}</span></h3><div class="tablewrap"><table class="dtable"><thead>
-      <tr><th rowspan="2" class="sortable" data-sort="name" data-ss="${W}">${lvl}${st.key === 'name' ? dirMark : ''}</th><th rowspan="2" class="sortable" data-sort="spend" data-ss="${W}">Spend${st.key === 'spend' ? dirMark : ''}</th><th rowspan="2" class="sortable" data-sort="roas" data-ss="${W}" title="Total revenue ÷ spend for the ticked categories (all outcomes)">iROAS${st.key === 'roas' ? dirMark : ''}</th>${cgroups.map(g => `<th colspan="${g.cols.length}" class="grp sepl">${esc(g.name)}</th>`).join('')}</tr>
+  const lineTotRev = rowsIn => cols.reduce((t, c) => t + total(c, rowsIn).rev, 0);
+  const line = (label, rowsIn, cls, paidOnly, attrs = '') => `<tr class="${cls}"${attrs}><td class="wrap">${label}</td><td class="num">${fmtMoney(rowsIn.reduce((t, r) => t + (spendOf.get(r.key) || 0), 0))}</td><td class="num">${fmtMoney(lineTotRev(rowsIn))}</td><td class="num">${fmtX(lineRoas(rowsIn, paidOnly))}</td>${cells(c => fmtMetric(metric, total(c, rowsIn)[metric]))}</tr>`;
+  // Each bucket group's rows can be collapsed to just its subtotal line — the subtotal itself always covers
+  // every row in the bucket regardless of collapse state or the "Show" limit.
+  const bucketCollapsed = (v.detailBucketCollapsed[W] ||= {});
+  const body = groups.map(g => {
+    const collapsed = !!bucketCollapsed[g.b];
+    const arrow = `<span class="muted" style="display:inline-block;width:12px;font-size:10px">${collapsed ? '▸' : '▾'}</span>`;
+    const header = line(`${arrow}<span class="dot b-${g.b}"></span>${BUCKET_LABEL[g.b]} <span class="muted">(${g.rows.length}${g.rows.length < g.all.length ? ' of ' + g.all.length : ''})</span>`,
+      g.all, 'section', undefined, ` data-bucket-toggle="${W}|${g.b}" style="cursor:pointer"`);
+    const rowsHtml = collapsed ? '' : g.rows.map(r => `<tr><td class="wrap">${esc(r.name)}${W === 'R' ? newBadge(r.chKey) : ''}</td><td class="num">${fmtMoney(spendOf.get(r.key))}</td><td class="num">${fmtMoney(rowTotRev(r))}</td><td class="num">${fmtX(roasOf(r))}</td>${cells(c => fmtMetric(metric, c.rows.get(r.key)?.[metric]))}</tr>`).join('');
+    return header + rowsHtml;
+  }).join('');
+  const table = !cols.length ? '<div class="empty">Check at least one category and outcome.</div>' : `<h3 style="padding:0 16px;margin:0 0 8px">${mLabel} <span class="muted" style="font-weight:500;font-size:12px">· Spend &amp; iROAS: ${esc(scopeLabel)} · Total revenue: the categories/outcomes ticked below</span></h3><div class="tablewrap"><table class="dtable"><thead>
+      <tr><th rowspan="2" class="sortable" data-sort="name" data-ss="${W}">${lvl}${st.key === 'name' ? dirMark : ''}</th><th rowspan="2" class="sortable" data-sort="spend" data-ss="${W}">Spend${st.key === 'spend' ? dirMark : ''}</th><th rowspan="2" class="sortable" data-sort="totrev" data-ss="${W}" title="Sum of the outcome columns shown to the right (the ticked categories and outcomes)">Total revenue${st.key === 'totrev' ? dirMark : ''}</th><th rowspan="2" class="sortable" data-sort="roas" data-ss="${W}" title="Revenue for the Spend category ÷ Spend">iROAS${st.key === 'roas' ? dirMark : ''}</th>${cgroups.map(g => `<th colspan="${g.cols.length}" class="grp sepl">${esc(g.name)}</th>`).join('')}</tr>
       <tr>${cgroups.map(g => g.cols.map((c, ci) => `<th class="sortable ${ci ? '' : 'sepl'}" data-sk="${esc(c.id)}" data-ss="${W}">${esc(c.label)}${st.key === 'val' && sc === c ? dirMark : ''}</th>`).join('')).join('')}</tr>
       </thead><tbody>${body || `<tr><td colspan="${nCols}" class="empty">No channels match.</td></tr>`}
       ${line(`Total (${n} channels)`, list, 'total', true)}</tbody></table></div>`;
@@ -1147,6 +1217,11 @@ function renderDetail() {
     $('#view').querySelectorAll(`[${attr}-all]`).forEach(b => b.addEventListener('click', () => { const W = b.dataset.dw, items = attr === 'data-do' ? V[W].outItems : V[W].catItems; store[W] = b.getAttribute(attr + '-all') === '1' ? {} : Object.fromEntries(items.map(([k]) => [k, true])); renderDetail(); }));
   };
   tick('data-do', v.detailOff); tick('data-dc', v.detailCatOff);
+  $('#view').querySelectorAll('[data-spend-cat]').forEach(sel => sel.addEventListener('change', e => { v.detailSpendCat[e.target.dataset.spendCat] = e.target.value; renderDetail(); }));
+  $('#view').querySelectorAll('[data-bucket-toggle]').forEach(tr => tr.addEventListener('click', () => {
+    const [W, b] = tr.dataset.bucketToggle.split('|'), store = (v.detailBucketCollapsed[W] ||= {});
+    store[b] = !store[b]; renderDetail();
+  }));
   wireDD($('#view'), v.detailDD);
   $('#view').querySelectorAll('[data-sort]').forEach(h => h.addEventListener('click', () => { const W = h.dataset.ss, st = v.dsort[W], key = h.dataset.sort; const k = h.dataset.sc ?? null; v.dsort[W] = { key, k, dir: st.key === key && st.k === k ? -st.dir : (key === 'name' ? 1 : -1) }; renderDetail(); }));
   $('#view').querySelectorAll('[data-sk]').forEach(h => h.addEventListener('click', () => {
@@ -1217,11 +1292,33 @@ function hydrateFromExport(data) {
   setTab(['mix', 'paid', 'detail'].includes(state.view.tab) ? state.view.tab : 'mix');
 }
 
+/* Resumes automatically from what was saved to this browser (persist(), above) — same underlying data shape as
+   an exported working copy, just sourced from localStorage instead of a downloaded file, and only for the tab
+   already restored into state.view.tab rather than always jumping to Mix. */
+function restoreSavedSetup() {
+  for (const which of ['prod', 'remodel']) Object.assign(state.files[which], { rows: [], headers: [] });
+  renderSlot('prod'); renderSlot('remodel');
+  $('#badge-prod').textContent = `${state.files.prod.name} · restored from your last session`;
+  $('#badge-remodel').textContent = `${state.files.remodel.name} · restored from your last session`;
+  refreshSetup();
+  if (['mix', 'paid', 'detail'].includes(state.view.tab)) {
+    document.querySelectorAll('.tab-btn').forEach(b => b.disabled = false);
+    $('#exportReportBtn').disabled = false; $('#exportReportBtn').title = '';
+    setTab(state.view.tab);
+  }
+}
+
 /* ============================== boot ============================== */
 $('#uploadInput').addEventListener('change', e => e.target.files.length && loadUpload([...e.target.files]));
 $('#notesSetup').value = state.notes.setup;
 $('#notesSetup').addEventListener('input', e => { state.notes.setup = e.target.value; persist(); });
+$('#forgetSetupBtn').addEventListener('click', () => {
+  if (!confirm('Clear everything saved in this browser (files, mapping, buckets, outcomes, notes) and start over?')) return;
+  try { localStorage.removeItem(STORE_KEY); } catch (e) {}
+  location.reload();
+});
 if (window.__EXPORT_STATE__) hydrateFromExport(window.__EXPORT_STATE__);
+else if (state.files.prod?.agg && state.files.remodel?.agg) restoreSavedSetup();
 else { renderSlot('prod'); renderSlot('remodel'); }
 </script>
 </body>
