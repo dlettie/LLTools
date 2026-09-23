@@ -183,7 +183,7 @@
     </div>
     <div class="card">
       <h2>Upload</h2>
-      <p class="hint">Drop in the model workbook. The tool finds the Prod and Remodel sheets by name (e.g. <b>Prod_data</b>, <b>Remodel_data</b>), or upload two files with “prod” and “remodel” in their names. .xlsx or .csv. Your setup — files, mapping, buckets, outcomes and notes — is saved in this browser automatically, so reloading or coming back later picks up right where you left off.</p>
+      <p class="hint">Drop in the model workbook. The tool finds the Prod and Remodel sheets by name (e.g. <b>Prod_data</b>, <b>Remodel_data</b>), or upload files with “prod” and “remodel” in their names. Use the optional second Remodel source when the Remodel is split across two datasets. Prod and Remodel can use different bucket mapping sheets. Your setup is saved in this browser automatically.</p>
       <input type="file" id="uploadInput" accept=".xlsx,.xls,.csv" multiple>
       <div class="filebadge" id="uploadStatus"></div>
       <div class="setup-actions" style="margin-top:10px"><button class="btn" id="forgetSetupBtn" title="Clears everything saved in this browser and starts fresh">Forget saved setup</button></div>
@@ -191,6 +191,7 @@
     <div class="grid2">
       <div class="card" id="slot-prod"></div>
       <div class="card" id="slot-remodel"></div>
+      <div class="card" id="slot-remodel2"></div>
     </div>
     <div class="card" id="mapCard" hidden></div>
     <div class="card" id="bucketCard" hidden>
@@ -280,12 +281,12 @@ const FIELDS = [
   ['revenue', 'Revenue', true, ['revenue', 'incrementalrevenue', 'attributedrevenue']],
   ['segment', 'Segment / bucket (optional)', false, ['segment', 'bucket']],
 ];
-const SLOTS = { prod: { title: 'Prod data', sub: 'What came before', sheet: 'prod_data' }, remodel: { title: 'Remodel data', sub: 'What exists now', sheet: 'remodel_data' } };
+const SLOTS = { prod: { title: 'Prod data', sub: 'What came before', sheet: 'prod_data' }, remodel: { title: 'Remodel data', sub: 'What exists now', sheet: 'remodel_data' }, remodel2: { title: 'Additional Remodel data (optional)', sub: 'A second Remodel source, combined with the first', sheet: '' } };
 const state = {
   sources: [],
   isWorkingCopy: false,   // true once opened from an exported working copy — keeps the Setup tab hidden across reloads too
-  files: { prod: null, remodel: null },      // {name, wb, sheet, rows, headers, map, agg, skipped}
-  mapSources: [], mapCfg: { idx: '', chCol: '', bkCol: '' }, mapBuckets: new Map(), mapIssues: { rows: 0, bad: [], conflicts: [] },   // bucket mapping tab (per upload)
+  files: { prod: null, remodel: null, remodel2: null },      // Remodel sources are combined for analysis
+  mapSources: [], mapCfg: { idx: '', chCol: '', bkCol: '' }, remodelMapCfg: { idx: '', chCol: '', bkCol: '' }, mapBuckets: new Map(), remodelMapBuckets: new Map(), mapIssues: { rows: 0, bad: [], conflicts: [] }, remodelMapIssues: { rows: 0, bad: [], conflicts: [] },
   bucketOverrides: {}, outcomeGroups: {}, outcomeExclude: {}, channelFlags: {}, channelChanges: [],
   notes: { setup: '', mix: '', paid: '', detail: '', compare: '' },
   snapshots: [],
@@ -300,7 +301,11 @@ const state = {
 try {
   const saved = JSON.parse(localStorage.getItem(STORE_KEY) || '{}');
   Object.assign(state, saved);
+  state.files.remodel2 ||= null;
   if (Array.isArray(state.mapBuckets)) state.mapBuckets = new Map(state.mapBuckets);
+  if (Array.isArray(state.remodelMapBuckets)) state.remodelMapBuckets = new Map(state.remodelMapBuckets);
+  else state.remodelMapBuckets = new Map(state.mapBuckets);
+  if (!saved.remodelMapCfg) state.remodelMapCfg = { ...state.mapCfg };
   if (saved.viewTab) state.view.tab = saved.viewTab;
 } catch (e) {}
 const persist = () => {
@@ -310,7 +315,7 @@ const persist = () => {
       channelFlags: state.channelFlags, channelChanges: state.channelChanges, notes: state.notes,
       snapshots: state.snapshots,
       clientName: state.clientName,
-      mapBuckets: [...state.mapBuckets], viewTab: state.view.tab, isWorkingCopy: state.isWorkingCopy,
+      mapBuckets: [...state.mapBuckets], remodelMapBuckets: [...state.remodelMapBuckets], mapCfg: state.mapCfg, remodelMapCfg: state.remodelMapCfg, viewTab: state.view.tab, isWorkingCopy: state.isWorkingCopy,
     };
     // Only save file data once both sides are fully aggregated — never a half-loaded state, and never overwrite
     // a previously-saved complete setup with an in-progress one.
@@ -318,21 +323,35 @@ const persist = () => {
       payload.files = {
         prod: { name: state.files.prod.name, agg: state.files.prod.agg, spendRepeats: state.files.prod.spendRepeats, map: state.files.prod.map },
         remodel: { name: state.files.remodel.name, agg: state.files.remodel.agg, spendRepeats: state.files.remodel.spendRepeats, map: state.files.remodel.map },
+        remodel2: state.files.remodel2?.agg ? { name: state.files.remodel2.name, agg: state.files.remodel2.agg, spendRepeats: state.files.remodel2.spendRepeats, map: state.files.remodel2.map } : null,
       };
     }
     localStorage.setItem(STORE_KEY, JSON.stringify(payload));
   } catch (e) {}
 };
 
+function dataFile(which) {
+  const base = state.files[which];
+  if (which !== 'remodel' || !state.files.remodel2?.agg) return base;
+  const second = state.files.remodel2;
+  return { ...base, name: `${base.name} + ${second.name}`, agg: [...base.agg, ...second.agg], spendRepeats: base.spendRepeats || second.spendRepeats, map: { ...base.map, ...second.map } };
+}
+
 /* ============================== file loading ============================== */
 function renderSlot(which) {
   const s = SLOTS[which], f = state.files[which], el = $('#slot-' + which);
-  const opts = state.sources.map((src, i) => `<option value="${i}" ${f && f.source === src ? 'selected' : ''}>${esc(src.label)}</option>`).join('');
+  const opts = state.sources.map((src, i) => {
+    const duplicate = (which === 'remodel' && state.files.remodel2?.source === src) || (which === 'remodel2' && state.files.remodel?.source === src);
+    return `<option value="${i}" ${f && f.source === src ? 'selected' : ''} ${duplicate && f?.source !== src ? 'disabled' : ''}>${esc(src.label)}</option>`;
+  }).join('');
   el.innerHTML = `<h2>${s.title}</h2><p class="hint">${s.sub}.</p>
-    ${state.sources.length ? `<label>Source</label><select data-src><option value="">${f ? 'Choose…' : 'Not found — choose the sheet…'}</option>${opts}</select>` : '<div class="muted">Upload a file above.</div>'}
+    ${state.sources.length ? `<label>Source</label><select data-src><option value="">${f ? 'Choose…' : which === 'remodel2' ? 'Optional — choose a second source…' : 'Not found — choose the sheet…'}</option>${opts}</select>` : '<div class="muted">Upload a file above.</div>'}
     <div class="filebadge" id="badge-${which}"></div><div id="map-${which}"></div><div id="rep-${which}"></div>`;
   const sel = el.querySelector('[data-src]');
-  if (sel) sel.addEventListener('change', e => { if (e.target.value !== '') useSource(which, state.sources[+e.target.value]); });
+  if (sel) sel.addEventListener('change', e => {
+    if (e.target.value !== '') useSource(which, state.sources[+e.target.value]);
+    else if (which === 'remodel2') { state.files.remodel2 = null; renderSlot(which); refreshSetup(); persist(); }
+  });
   if (f) renderMapper(which);
 }
 
@@ -374,20 +393,23 @@ async function loadUpload(fileList) {
       }
     }
   } catch (err) { status.innerHTML = `<span class="down">Could not read file: ${esc(err.message)}</span>`; return; }
-  state.sources = sources; state.files = { prod: null, remodel: null };
+  state.sources = sources; state.files = { prod: null, remodel: null, remodel2: null };
   state.mapSources = mapSources; autoPickMapping();
   const pick = new Map();
   for (const which of ['prod', 'remodel']) {
     const best = sources.map(src => ({ src, sc: scoreSource(src, which) })).filter(x => x.sc > 0).sort((a, b) => b.sc - a.sc)[0];
     if (best) pick.set(which, best.src);
   }
+  const firstRemodel = pick.get('remodel');
+  const secondRemodel = sources.map(src => ({ src, sc: scoreSource(src, 'remodel') })).filter(x => x.sc > 0 && x.src !== firstRemodel).sort((a, b) => b.sc - a.sc)[0];
+  if (secondRemodel) pick.set('remodel2', secondRemodel.src);
   if (pick.get('prod') === pick.get('remodel')) pick.delete('prod'), pick.delete('remodel');   // ambiguous
-  const found = ['prod', 'remodel'].filter(w => pick.get(w)).map(w => `${SLOTS[w].title} → ${pick.get(w).label}`);
+  const found = ['prod', 'remodel', 'remodel2'].filter(w => pick.get(w)).map(w => `${SLOTS[w].title} → ${pick.get(w).label}`);
   status.innerHTML = !sources.length ? '<span class="down">No sheets with Channel, Business Outcome, Spend and Revenue columns were found.</span>'
-    : found.length === 2 ? `Identified <b>${esc(found[0])}</b> and <b>${esc(found[1])}</b>.`
+    : found.length >= 2 ? `Identified ${found.map(x => `<b>${esc(x)}</b>`).join(' and ')}.`
     : `${found.length ? esc(found.join(' · ')) + '. ' : ''}<span class="down">Could not tell which sheet is ${found.length ? 'the other' : 'Prod or Remodel'}. Choose below.</span>`;
-  renderSlot('prod'); renderSlot('remodel');
-  for (const which of ['prod', 'remodel']) if (pick.get(which)) useSource(which, pick.get(which));
+  for (const which of ['prod', 'remodel', 'remodel2']) renderSlot(which);
+  for (const which of ['prod', 'remodel', 'remodel2']) if (pick.get(which)) useSource(which, pick.get(which));
   refreshSetup();   // also resets the bucket/outcome tables and Run button when nothing was identified
 }
 
@@ -442,8 +464,9 @@ function aggregate(which) {
   }
   f.agg = [...map.values()]; f.skipped = skipped;
   f.spendRepeats = detectRepeatedSpend(f.agg);
+  f.agg.forEach(a => { a._dataset = which; a._repeatsSpend = f.spendRepeats; });
   $('#rep-' + which).innerHTML = `<label style="margin-top:12px;display:flex;gap:8px;align-items:flex-start;font-weight:500"><input type="checkbox" ${f.spendRepeats ? 'checked' : ''} style="margin-top:3px"><span>Spend is repeated on each outcome / category row — count it once when combining${f.spendRepeats ? ' <span class="muted">(detected)</span>' : ''}</span></label>`;
-  $('#rep-' + which + ' input').addEventListener('change', e => { f.spendRepeats = e.target.checked; persist(); });
+  $('#rep-' + which + ' input').addEventListener('change', e => { f.spendRepeats = e.target.checked; f.agg.forEach(a => { a._repeatsSpend = f.spendRepeats; }); persist(); });
   badge.textContent = `${f.name} · ${f.rows.length.toLocaleString()} rows → ${f.agg.length.toLocaleString()} channel/outcome combos` + (skipped ? ` · ${skipped} rows skipped (blank channel or total)` : '');
   refreshSetup();
   persist();   // saves the aggregated data + column mapping so this setup survives a reload
@@ -462,9 +485,10 @@ function detectRepeatedSpend(agg) {
 
 /* ============================== setup: buckets & outcomes ============================== */
 /* Paid = has spend. No spend: Baseline or Unpaid (promotions count as Unpaid), judged from the Segment column, then the channel name. */
-function autoBucket(c) {
-  if (c.spend) return 'paid';
-  const seg = c.defaultSeg && c.defaultSeg !== 'paid' ? c.defaultSeg : null;
+function autoBucket(c, side = 'remodel') {
+  if (c.spendBySide?.[side]) return 'paid';
+  const sideSegs = c.segs[side];
+  const seg = sideSegs ? Object.entries(sideSegs).sort((a, b) => b[1] - a[1])[0][0] : null;
   return seg || (/base/i.test(c.name) ? 'baseline' : 'unpaid');
 }
 function segToBucket(seg) {
@@ -478,13 +502,14 @@ function segToBucket(seg) {
 const defaultOutcomeLabel = raw => norm(raw).replace(/^all\s*[-–]\s*/, '') || '(blank)';
 const outcomeLabel = raw => state.outcomeGroups[norm(raw)] ?? defaultOutcomeLabel(raw);
 /* Precedence: manual pick > mapping tab > auto-detect. */
-const bucketOf = chKey => {
-  const o = state.bucketOverrides[chKey] || state.mapBuckets.get(chKey);
+const bucketOf = (chKey, side = 'remodel') => {
+  const map = side === 'prod' ? state.mapBuckets : state.remodelMapBuckets;
+  const o = state.bucketOverrides[`${side}:${chKey}`] || state.bucketOverrides[chKey] || map.get(chKey);
   if (o) return o;
   const c = state.channels.get(chKey);
-  return (c && (c.defaultBucket)) || 'unassigned';
+  return c ? autoBucket(c, side) : 'unassigned';
 };
-const bucketSource = k => state.bucketOverrides[k] ? 'Manual' : state.mapBuckets.has(k) ? 'Mapping tab' : state.mapBuckets.size ? 'Auto · not in mapping' : 'Auto';
+const bucketSource = (k, side = 'remodel') => state.bucketOverrides[`${side}:${k}`] || state.bucketOverrides[k] ? 'Manual' : (side === 'prod' ? state.mapBuckets : state.remodelMapBuckets).has(k) ? 'Mapping tab' : 'Auto';
 /* Auto: appears anywhere in Remodel but nowhere in Prod at all (not just filtered out of the current view).
    A manual call from the Setup bucket table (New / Existing / Combination of…) always wins over that. */
 const autoNewInRemodel = chKey => { const c = state.channels.get(chKey); return !!(c && c.present.remodel && !c.present.prod); };
@@ -511,19 +536,21 @@ function autoPickMapping() {
   const scored = state.mapSources.map((src, i) => ({ i, ...detectMapCols(src), named: /map/i.test(src.sheet) }));
   const best = scored.filter(x => x.chCol && x.bkCol).sort((a, b) => b.named - a.named)[0] || scored.find(x => x.named);
   state.mapCfg = best ? { idx: String(best.i), chCol: best.chCol, bkCol: best.bkCol } : { idx: '', chCol: '', bkCol: '' };
-  applyMapping();
+  state.remodelMapCfg = { ...state.mapCfg };
+  applyMapping('prod'); applyMapping('remodel');
 }
-function applyMapping() {
-  const c = state.mapCfg, src = state.mapSources[c.idx];
-  state.mapBuckets = new Map(); state.mapIssues = { rows: 0, bad: [], conflicts: [] };
+function applyMapping(side = 'prod') {
+  const cfg = side === 'prod' ? 'mapCfg' : 'remodelMapCfg', mapKey = side === 'prod' ? 'mapBuckets' : 'remodelMapBuckets', issueKey = side === 'prod' ? 'mapIssues' : 'remodelMapIssues';
+  const c = state[cfg], src = state.mapSources[c.idx];
+  state[mapKey] = new Map(); state[issueKey] = { rows: 0, bad: [], conflicts: [] };
   if (src && c.chCol && c.bkCol) {
     for (const r of XLSX.utils.sheet_to_json(src.wb.Sheets[src.sheet], { defval: '' })) {
       const ch = String(r[c.chCol] ?? '').trim(); if (!ch) continue;
-      state.mapIssues.rows++;
+      state[issueKey].rows++;
       const b = segToBucket(r[c.bkCol]), k = norm(ch);
-      if (!b) { state.mapIssues.bad.push(`${ch} (“${String(r[c.bkCol]).trim() || 'blank'}”)`); continue; }
-      if (state.mapBuckets.has(k) && state.mapBuckets.get(k) !== b) state.mapIssues.conflicts.push(ch);
-      state.mapBuckets.set(k, b);
+      if (!b) { state[issueKey].bad.push(`${ch} (“${String(r[c.bkCol]).trim() || 'blank'}”)`); continue; }
+      if (state[mapKey].has(k) && state[mapKey].get(k) !== b) state[issueKey].conflicts.push(ch);
+      state[mapKey].set(k, b);
     }
   }
   refreshSetup();
@@ -534,55 +561,39 @@ function renderMapCard() {
   const card = $('#mapCard'), srcs = state.mapSources;
   card.hidden = !srcs.length;
   if (card.hidden) return;
-  const c = state.mapCfg, src = srcs[c.idx], hs = src ? headersOf(src.wb.Sheets[src.sheet]) : [];
-  const sel = (key, label, opts, val, none) => `<div><label>${label}</label><select data-mc="${key}"><option value="">${none}</option>${opts.map(([v, t]) => `<option value="${esc(v)}" ${String(val) === String(v) ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></div>`;
-  const notes = [];
-  const M = state.mapBuckets, chs = state.channels;
-  if (!src) notes.push('<span class="muted">No mapping sheet selected: buckets are auto-detected (any channel with spend is Paid).</span>');
-  else if (!c.chCol || !c.bkCol) notes.push('<span class="down">Pick the Channel and Bucket columns.</span>');
-  else {
-    notes.push(`Read <b>${M.size}</b> channel${M.size === 1 ? '' : 's'} from “${esc(src.sheet)}”.`);
-    if (state.mapIssues.bad.length) notes.push(`<span class="down">${state.mapIssues.bad.length} row${state.mapIssues.bad.length > 1 ? 's have' : ' has'} a bucket I don’t recognise (use Paid, Unpaid, Baseline or Promotions): ${listNames(state.mapIssues.bad)}.</span>`);
-    if (state.mapIssues.conflicts.length) notes.push(`<span class="down">Listed more than once with different buckets (the last one wins): ${listNames(state.mapIssues.conflicts)}.</span>`);
-    if (chs.size) {
-      const list = f => [...chs].filter(([k, ch]) => f(k, ch)).map(([, ch]) => ch.name);
-      const unlisted = list(k => !M.has(k)), stray = [...M.keys()].filter(k => !chs.has(k));
-      const noSpendPaid = list((k, ch) => M.get(k) === 'paid' && !ch.spend), spendNonPaid = list((k, ch) => M.has(k) && M.get(k) !== 'paid' && ch.spend);
-      const stale = list(k => M.has(k) && state.bucketOverrides[k] && state.bucketOverrides[k] !== M.get(k));
-      if (unlisted.length) notes.push(`<span class="down"><b>${unlisted.length}</b> channel${unlisted.length > 1 ? 's are' : ' is'} not in the mapping tab and fall back to auto-detect: ${listNames(unlisted)}.</span>`);
-      if (stale.length) notes.push(`<span class="down"><b>${stale.length}</b> saved manual pick${stale.length > 1 ? 's' : ''} override the mapping tab (${listNames(stale)}). Use “Clear manual overrides” below to follow the mapping.</span>`);
-      if (spendNonPaid.length) notes.push(`<span class="muted">Mapped Unpaid/Baseline but have spend: ${listNames(spendNonPaid)}.</span>`);
-      if (noSpendPaid.length) notes.push(`<span class="muted">Mapped Paid but have no spend: ${listNames(noSpendPaid)}.</span>`);
-      if (stray.length) notes.push(`<span class="muted">${stray.length} mapping row${stray.length > 1 ? 's match' : ' matches'} no channel in the data (check spelling): ${listNames(stray.map(k => k))}.</span>`);
-      if (!unlisted.length && !stale.length) notes.push('<span class="up">Every channel is covered by the mapping tab.</span>');
-    }
-  }
-  card.innerHTML = `<h2>Bucket mapping</h2>
-    <p class="hint">If your workbook has a mapping tab (a Channel column and a Bucket column of Paid / Unpaid / Baseline / Promotions), it decides each channel’s bucket. Channels it doesn’t list fall back to auto-detect and are flagged. Manual picks below still win.</p>
-    <div class="maprow">${sel('idx', 'Mapping sheet', srcs.map((x, i) => [String(i), x.label]), c.idx, '(none — auto-detect)')}${sel('chCol', 'Channel column', hs.map(h => [h, h]), c.chCol, 'Select…')}${sel('bkCol', 'Bucket column', hs.map(h => [h, h]), c.bkCol, 'Select…')}</div>
-    <div style="margin-top:10px;display:flex;flex-direction:column;gap:4px;font-size:13px">${notes.map(n => `<div>${n}</div>`).join('')}</div>`;
+  const options = srcs.map((x, i) => [String(i), x.label]);
+  const sideEditor = (side, title) => {
+    const c = state[side === 'prod' ? 'mapCfg' : 'remodelMapCfg'], src = srcs[c.idx], hs = src ? headersOf(src.wb.Sheets[src.sheet]) : [];
+    const sel = (key, label, opts, val, none) => `<div><label>${label}</label><select data-mc-side="${side}" data-mc="${key}"><option value="">${none}</option>${opts.map(([v, t]) => `<option value="${esc(v)}" ${String(val) === String(v) ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></div>`;
+    const count = state[side === 'prod' ? 'mapBuckets' : 'remodelMapBuckets'].size;
+    return `<h3>${title}</h3><div class="maprow">${sel('idx', 'Mapping sheet', options, c.idx, '(none — auto-detect)')}${sel('chCol', 'Channel column', hs.map(h => [h, h]), c.chCol, 'Select…')}${sel('bkCol', 'Bucket column', hs.map(h => [h, h]), c.bkCol, 'Select…')}</div><p class="hint">${src && c.chCol && c.bkCol ? `${count} channels mapped from ${esc(src.label)}.` : 'No mapping selected; channels use their data segment or auto-detection.'}</p>`;
+  };
+  card.innerHTML = `<h2>Bucket mapping</h2><p class="hint">Prod and Remodel can use different bucket mapping sheets. Manual bucket choices below override the selected side.</p>${sideEditor('prod', 'Prod mapping')}${sideEditor('remodel', 'Remodel mapping')}`;
 }
 $('#mapCard').addEventListener('change', e => {
   const k = e.target.dataset.mc; if (!k) return;
-  if (k === 'idx') state.mapCfg = e.target.value === '' ? { idx: '', chCol: '', bkCol: '' } : { idx: e.target.value, ...detectMapCols(state.mapSources[e.target.value]) };
-  else state.mapCfg[k] = e.target.value;
-  applyMapping();
+  const side = e.target.dataset.mcSide, cfg = side === 'prod' ? 'mapCfg' : 'remodelMapCfg';
+  if (k === 'idx') state[cfg] = e.target.value === '' ? { idx: '', chCol: '', bkCol: '' } : { idx: e.target.value, ...detectMapCols(state.mapSources[e.target.value]) };
+  else state[cfg][k] = e.target.value;
+  applyMapping(side);
 });
 
 function refreshSetup() {
   // rebuild channel index from whichever files are ready
   const ch = new Map();
-  for (const which of ['prod', 'remodel']) {
+  for (const which of ['prod', 'remodel', 'remodel2']) {
     const f = state.files[which];
     if (!f || !f.agg) continue;
+    const side = which === 'remodel2' ? 'remodel' : which;
     for (const a of f.agg) {
       const k = norm(a.ch);
       let c = ch.get(k);
-      if (!c) ch.set(k, c = { name: a.ch, segs: {}, rev: { prod: 0, remodel: 0 }, present: { prod: false, remodel: false }, spend: 0 });
-      c.rev[which] += a.rev; c.spend += Math.abs(a.spend);
-      if (a.spend || a.rev) c.present[which] = true;   // a zero-spend/zero-revenue placeholder row (common for a channel not yet live) doesn't count as "present"
+      if (!c) ch.set(k, c = { name: a.ch, segs: {}, rev: { prod: 0, remodel: 0 }, present: { prod: false, remodel: false }, spend: 0, spendBySide: { prod: 0, remodel: 0 } });
+      c.rev[side] += a.rev; c.spend += Math.abs(a.spend);
+      c.spendBySide[side] += Math.abs(a.spend);
+      if (a.spend || a.rev) c.present[side] = true;   // a zero-spend/zero-revenue placeholder row (common for a channel not yet live) doesn't count as "present"
       const b = segToBucket(a.seg);
-      if (b) { c.segs[which] ??= {}; c.segs[which][b] = (c.segs[which][b] || 0) + Math.abs(a.rev) + 1e-9; }
+      if (b) { c.segs[side] ??= {}; c.segs[side][b] = (c.segs[side][b] || 0) + Math.abs(a.rev) + 1e-9; }
     }
   }
   for (const c of ch.values()) {
@@ -635,27 +646,27 @@ function renderBucketTable() {
   const raws = new Map([...state.channels].map(([k, c]) => [k, { name: c.name, files: new Set([c.present.prod && 'prod', c.present.remodel && 'remodel'].filter(Boolean)) }]));
   const hints = nameRelationHints(raws);
   const rows = [...state.channels.entries()].filter(([k, c]) => !q || k.includes(q)).sort((a, b) => Math.abs(b[1].rev.remodel) + Math.abs(b[1].rev.prod) - Math.abs(a[1].rev.remodel) - Math.abs(a[1].rev.prod));
-  $('#bucketTable').innerHTML = `<thead><tr><th>Channel</th><th>Prod revenue</th><th>Remodel revenue</th><th>Spend</th><th>Segment column</th><th style="text-align:left">Bucket</th><th style="text-align:left">Source</th><th style="text-align:left">Status</th></tr></thead><tbody>` +
+  $('#bucketTable').innerHTML = `<thead><tr><th>Channel</th><th>Prod revenue</th><th>Remodel revenue</th><th>Spend</th><th>Detected segment</th><th style="text-align:left">Prod bucket</th><th style="text-align:left">Prod source</th><th style="text-align:left">Remodel bucket</th><th style="text-align:left">Remodel source</th><th style="text-align:left">Status</th></tr></thead><tbody>` +
     rows.map(([k, c]) => {
-      const cur = bucketOf(k);
+      const curP = bucketOf(k, 'prod'), curR = bucketOf(k, 'remodel');
       const only = !c.present.prod || !c.present.remodel ? ` <span class="muted" title="Only appears in ${c.present.prod ? 'Prod' : 'Remodel'}">(${c.present.prod ? 'Prod' : 'Remodel'} only)</span>` : '';
       const hint = hints.has(k) ? `<div class="muted" style="font-weight:400;font-size:11px;margin-top:2px">${hints.get(k).map(esc).join('<br>')}</div>` : '';
-      return `<tr data-k="${esc(k)}"><td><span class="dot b-${cur}"></span>${esc(c.name)}${only}${hint}</td>
+      const bucketSelect = (side, cur) => `<select data-k="${esc(k)}" data-side="${side}" style="width:130px">${cur === 'unassigned' ? '<option value="" selected>Unassigned</option>' : ''}${BUCKETS.map(([v, l]) => `<option value="${v}" ${cur === v ? 'selected' : ''}>${l}</option>`).join('')}</select>`;
+      return `<tr data-k="${esc(k)}"><td><span class="dot b-${curR}"></span>${esc(c.name)}${only}${hint}</td>
         <td class="num">${c.present.prod ? fmtMoney(c.rev.prod) : '—'}</td><td class="num">${c.present.remodel ? fmtMoney(c.rev.remodel) : '—'}</td>
         <td class="num">${c.spend ? fmtMoney(c.spend) : '—'}</td><td class="muted">${c.segLabel}</td>
-        <td style="text-align:left"><select data-k="${esc(k)}" style="width:130px">${cur === 'unassigned' ? '<option value="" selected>Unassigned</option>' : ''}
-          ${BUCKETS.map(([v, l]) => `<option value="${v}" ${cur === v ? 'selected' : ''}>${l}</option>`).join('')}</select></td>
-        <td style="text-align:left" class="${state.mapBuckets.size && !state.mapBuckets.has(k) && !state.bucketOverrides[k] ? 'down' : 'muted'}">${bucketSource(k)}</td>
+        <td style="text-align:left">${bucketSelect('prod', curP)}</td><td style="text-align:left" class="muted">${bucketSource(k, 'prod')}</td>
+        <td style="text-align:left">${bucketSelect('remodel', curR)}</td><td style="text-align:left" class="muted">${bucketSource(k, 'remodel')}</td>
         <td style="text-align:left">${statusCell(k)}</td></tr>`;
     }).join('') + '</tbody>';
   $('#bucketTable').querySelectorAll('details.ddown').forEach(d => d.addEventListener('toggle', () => {
     const k = d.closest('tr')?.dataset.k; if (!k) return;
     if (d.open) comboDDOpen.add(k); else comboDDOpen.delete(k);
   }));
-  const un = [...state.channels.keys()].filter(k => bucketOf(k) === 'unassigned').length;
+  const un = [...state.channels.keys()].filter(k => bucketOf(k, 'prod') === 'unassigned' || bucketOf(k, 'remodel') === 'unassigned').length;
   const w = $('#bucketWarn');
   w.hidden = !un;
-  w.textContent = un ? `${un} channel${un > 1 ? 's have' : ' has'} no bucket yet. They will show as “Unassigned” in the mix until you pick one.` : '';
+  w.textContent = un ? `${un} channel${un > 1 ? 's have' : ' has'} an unassigned Prod or Remodel bucket. It will show as “Unassigned” in the mix until you map or assign it.` : '';
 }
 
 /* Flags a name (channel or outcome, present in only one file) that looks like a prefix/child of another, e.g. Prod's
@@ -695,9 +706,9 @@ function suggestCombineSources(k) {
 
 function renderOutcomeTable() {
   const raws = new Map();
-  for (const which of ['prod', 'remodel']) {
+  for (const which of ['prod', 'remodel', 'remodel2']) {
     const f = state.files[which]; if (!f || !f.agg) continue;
-    for (const a of f.agg) { const k = norm(a.out); const e = raws.get(k) || { name: a.out, files: new Set() }; e.files.add(which); raws.set(k, e); }
+    for (const a of f.agg) { const k = norm(a.out), side = which === 'remodel2' ? 'remodel' : which; const e = raws.get(k) || { name: a.out, files: new Set() }; e.files.add(side); raws.set(k, e); }
   }
   const hints = nameRelationHints(raws);
   const status = e => e.files.size === 2 ? '<span class="muted">In both</span>' : e.files.has('prod') ? '<span class="down">Only in Prod</span>' : '<span class="up">New in Remodel</span>';
@@ -712,13 +723,13 @@ function renderOutcomeTable() {
 function updateGo() {
   const ready = state.files.prod?.agg && state.files.remodel?.agg;
   $('#goBtn').disabled = !ready;
-  $('#goMsg').textContent = ready ? '' : 'Load and map both files to run the review.';
+  $('#goMsg').textContent = ready ? '' : 'Load and map Prod and Remodel data to run the review.';
 }
 
 $('#bucketFilter').addEventListener('input', renderBucketTable);
 $('#bucketTable').addEventListener('change', e => {
   const t = e.target;
-  if (t.dataset.k && t.tagName === 'SELECT' && t.value) { state.bucketOverrides[t.dataset.k] = t.value; persist(); renderBucketTable(); }
+  if (t.dataset.k && t.dataset.side && t.tagName === 'SELECT' && t.value) { state.bucketOverrides[`${t.dataset.side}:${t.dataset.k}`] = t.value; persist(); renderBucketTable(); }
   if (t.dataset.status) {
     const k = t.dataset.status, v = t.value;
     if (v === 'auto') delete state.channelFlags[k];
@@ -736,7 +747,7 @@ $('#bucketTable').addEventListener('change', e => {
 });
 $('#bulkBucket').addEventListener('change', e => {
   if (!e.target.value) return;
-  $('#bucketTable').querySelectorAll('tbody tr').forEach(tr => { state.bucketOverrides[tr.dataset.k] = e.target.value; });
+  $('#bucketTable').querySelectorAll('tbody tr').forEach(tr => { for (const side of ['prod', 'remodel']) state.bucketOverrides[`${side}:${tr.dataset.k}`] = e.target.value; });
   e.target.value = ''; persist(); renderBucketTable();
 });
 $('#resetBuckets').addEventListener('click', () => { state.bucketOverrides = {}; persist(); renderBucketTable(); });
@@ -753,7 +764,7 @@ $('#outcomeTable').addEventListener('change', e => {
 const hasCategorySplit = f => f.agg.some(a => norm(a.cat) !== 'all');
 /* strict: a specific category means exactly that category in this file (no falling back to its "All" rows when it has no category split). */
 function slice(which, cat, out, level, strict = false) {
-  const f = state.files[which];
+  const f = dataFile(which);
   let data = f.agg;
   if (cat === '__all__') {
     const withAll = new Set(data.filter(a => norm(a.cat) === 'all').map(a => norm(a.out)));
@@ -768,12 +779,12 @@ function slice(which, cat, out, level, strict = false) {
     let r = m.get(key);
     if (!r) m.set(key, r = { key, ch: a.ch, tac: level === 'tactic' ? a.tac : null, chKey: norm(a.ch), spend: 0, rev: 0 });
     r.rev += a.rev;
-    if (!f.spendRepeats) { r.spend += a.spend; continue; }
+    if (!(a._repeatsSpend ?? f.spendRepeats)) { r.spend += a.spend; continue; }
     // spend repeats on each outcome/category row: count it once per channel+tactic (keep the largest)
-    const sk = norm(a.ch) + '|' + norm(a.tac), prev = spendBy.get(sk) ?? 0;
+    const sk = `${a._dataset || which}|${norm(a.ch)}|${norm(a.tac)}`, prev = spendBy.get(sk) ?? 0;
     if (a.spend > prev) { r.spend += a.spend - prev; spendBy.set(sk, a.spend); }
   }
-  const rows = [...m.values()].map(r => ({ ...r, bucket: bucketOf(r.chKey) }));
+  const rows = [...m.values()].map(r => ({ ...r, bucket: bucketOf(r.chKey, which) }));
   return { rows, has: rows.length > 0 };
 }
 
@@ -784,7 +795,7 @@ function bucketTotals(rows) {
 }
 const allOutcomes = () => {
   const s = new Set();
-  for (const w of ['prod', 'remodel']) for (const a of state.files[w].agg) s.add(norm(outcomeLabel(a.out)));
+  for (const w of ['prod', 'remodel']) for (const a of dataFile(w).agg) s.add(norm(outcomeLabel(a.out)));
   return [...s].sort();
 };
 /* Outcomes that have rows in at least one file for this category, so the dropdown never leads to an empty view. */
@@ -792,7 +803,7 @@ const outcomesFor = (cat, prodOnly = false) => allOutcomes().filter(o =>
   slice('prod', cat, o, 'channel').has || (!prodOnly && slice('remodel', cat, o, 'channel').has));
 const allCategories = () => {
   const s = new Map();
-  for (const w of ['prod', 'remodel']) for (const a of state.files[w].agg) if (norm(a.cat) !== 'all') s.set(norm(a.cat), a.cat);
+  for (const w of ['prod', 'remodel']) for (const a of dataFile(w).agg) if (norm(a.cat) !== 'all') s.set(norm(a.cat), a.cat);
   return [...s.entries()].sort((a, b) => a[1].localeCompare(b[1]));
 };
 
@@ -1020,7 +1031,7 @@ function syncFilters() {
   const outs = outcomesFor(v.cat, v.tab === 'mix');   // the mix is anchored on Prod: it only offers outcomes that exist there
   $('#fOut').innerHTML = `<option value="__all__">${v.tab === 'mix' ? 'All outcomes' : 'All outcomes (combined)'}</option>` + outs.map(o => `<option value="${esc(o)}">${esc(o)}</option>`).join('');
   $('#fOut').value = outs.includes(v.out) ? v.out : '__all__'; v.out = $('#fOut').value;
-  const hasTactic = ['prod', 'remodel'].some(w => state.files[w].map.tactic);
+  const hasTactic = ['prod', 'remodel'].some(w => dataFile(w).map.tactic);
   $('#fLevelWrap').hidden = !hasTactic || v.tab === 'mix';
   $('#fOutWrap').hidden = v.tab === 'detail' || v.tab === 'paid' || v.tab === 'compare';   // detail, paid and compare have their own outcome checklists...
   $('#fCatWrap').hidden = v.tab === 'detail' || v.tab === 'paid' || v.tab === 'compare';   // ...and category checklists
@@ -1039,7 +1050,7 @@ function render() {
   if (state.view.tab === 'snapshots') { renderSnapshots(); return; }
   scopeNote();
   const t = state.view.tab;
-  const hasTactic = ['prod', 'remodel'].some(w => state.files[w].map.tactic);
+  const hasTactic = ['prod', 'remodel'].some(w => dataFile(w).map.tactic);
   $('#filterCard').hidden = t === 'mix' || ((t === 'detail' || t === 'paid' || t === 'compare') && !hasTactic);   // mix, detail, paid and compare all have their own category/outcome checklists and show every category as a section
   $('#view').innerHTML = '';
   ({ mix: renderMix, paid: renderPaid, detail: renderDetail, compare: renderCompare })[t]();
@@ -1121,7 +1132,7 @@ function wireDD(root, openState) {
 }
 
 function mixSideView(W) {
-  const v = state.view, file = SIDE_FILE[W], F = state.files[file], off = (v.mixOff[W] ||= {}), catOff = (v.mixCatOff[W] ||= {});
+  const v = state.view, file = SIDE_FILE[W], F = dataFile(file), off = (v.mixOff[W] ||= {}), catOff = (v.mixCatOff[W] ||= {});
   const raw = v.mixMetric === 'raw';
   const catItems = [[COMBINED, 'All'], ...allCategories()].filter(([c]) => c === COMBINED ? F.agg.length : F.agg.some(a => norm(a.cat) === c));
   const outItems = [[COMBINED, 'All outcomes (combined)'], ...allOutcomes().map(o => [o, o])].filter(([k]) => catItems.some(([c]) => slice(file, c, k, 'channel', true).has));
@@ -1173,7 +1184,7 @@ function renderMix() {
    ticks — same reasoning as Detail: spend often isn't split by outcome/category the way revenue is, so it's
    always "all outcomes" and just one chosen category (or "All"). Shares are of PAID spend / PAID revenue. */
 function paidSideView(W) {
-  const v = state.view, file = SIDE_FILE[W], F = state.files[file];
+  const v = state.view, file = SIDE_FILE[W], F = dataFile(file);
   const off = (v.paidOff[W] ||= {}), catOff = (v.paidCatOff[W] ||= {});
   const catItems = [[COMBINED, 'All'], ...allCategories()].filter(([c]) => c === COMBINED ? F.agg.length : F.agg.some(a => norm(a.cat) === c));
   const outItems = allOutcomes().map(o => [o, o]).filter(([k]) => catItems.some(([c]) => slice(file, c, k, v.level, true).has));
@@ -1197,7 +1208,7 @@ function paidSideView(W) {
   for (const r of slice(file, spendCat, COMBINED, v.level, true).rows) {
     if (r.bucket !== 'paid') continue;
     const e = spendMap.get(r.key) || { name: r.tac ? `${r.ch} › ${r.tac}` : r.ch, chKey: r.chKey, spend: 0 };
-    e.spend = F.spendRepeats ? Math.max(e.spend, r.spend) : e.spend + r.spend; spendMap.set(r.key, e);
+    e.spend += r.spend; spendMap.set(r.key, e);
   }
   const keys = new Set([...revMap.keys(), ...spendMap.keys()]);
   const totRev = [...revMap.values()].reduce((t, e) => t + e.rev, 0), totSpend = [...spendMap.values()].reduce((t, e) => t + e.spend, 0);
@@ -1282,7 +1293,7 @@ function sideCol(W, cat, catName, k, label) {
 function detailSideView(W) {
   const v = state.view, file = SIDE_FILE[W], off = (v.detailOff[W] ||= {}), catOff = (v.detailCatOff[W] ||= {});
   const st = v.dsort[W], metric = v.detailMetric, mLabel = DETAIL_METRICS.find(([m]) => m === metric)[1];
-  const F = state.files[file];
+  const F = dataFile(file);
   const catItems = [[COMBINED, 'All'], ...allCategories()].filter(([c]) => c === COMBINED ? F.agg.length : F.agg.some(a => norm(a.cat) === c));
   const outItems = allOutcomes().map(o => [o, o]).filter(([k]) => catItems.some(([c]) => slice(file, c, k, v.level, true).has));
   // Spend and iROAS have their OWN category picker (a single choice, not the Categories checklist below), kept
@@ -1298,7 +1309,7 @@ function detailSideView(W) {
   const grand = new Map();
   for (const [c] of scopeCats) for (const r of slice(file, c, COMBINED, v.level, true).rows) {
     const g = grand.get(r.key) || { spend: 0, rev: 0 };
-    g.spend = F.spendRepeats ? Math.max(g.spend, r.spend) : g.spend + r.spend; g.rev += r.rev; grand.set(r.key, g);
+    g.spend += r.spend; g.rev += r.rev; grand.set(r.key, g);
   }
   const spendOf = new Map([...grand].map(([k, g]) => [k, g.spend])), revOf = new Map([...grand].map(([k, g]) => [k, g.rev]));
   const roasOf = r => spendOf.get(r.key) ? revOf.get(r.key) / spendOf.get(r.key) : null;
@@ -1435,7 +1446,7 @@ function exportCsv(V) {
 const COMPARE_METRICS = DETAIL_METRICS.filter(([m]) => m !== 'share');
 /* One side's scoped revenue/spend maps, plus the controls (Categories, Outcomes, Spend category) that produced them. */
 function compareSideScope(W) {
-  const v = state.view, file = SIDE_FILE[W], F = state.files[file];
+  const v = state.view, file = SIDE_FILE[W], F = dataFile(file);
   const off = (v.compareOff[W] ||= {}), catOff = (v.compareCatOff[W] ||= {});
   const catItems = [[COMBINED, 'All'], ...allCategories()].filter(([c]) => c === COMBINED ? F.agg.length : F.agg.some(a => norm(a.cat) === c));
   const outItems = allOutcomes().map(o => [o, o]).filter(([k]) => catItems.some(([c]) => slice(file, c, k, v.level, true).has));
@@ -1459,7 +1470,7 @@ function compareSideScope(W) {
   const spendMap = new Map();
   for (const r of slice(file, spendCat, COMBINED, v.level, true).rows) {
     const e = spendMap.get(r.key) || { name: r.tac ? `${r.ch} › ${r.tac}` : r.ch, chKey: r.chKey, spend: 0 };
-    e.spend = F.spendRepeats ? Math.max(e.spend, r.spend) : e.spend + r.spend; spendMap.set(r.key, e);
+    e.spend += r.spend; spendMap.set(r.key, e);
   }
   return { head, revMap, spendMap, catItems, outItems };
 }
@@ -1547,8 +1558,9 @@ function exportWorkingCopy() {
   const data = {
     prod: { name: state.files.prod.name, agg: state.files.prod.agg, spendRepeats: state.files.prod.spendRepeats, map: state.files.prod.map },
     remodel: { name: state.files.remodel.name, agg: state.files.remodel.agg, spendRepeats: state.files.remodel.spendRepeats, map: state.files.remodel.map },
+    remodel2: state.files.remodel2?.agg ? { name: state.files.remodel2.name, agg: state.files.remodel2.agg, spendRepeats: state.files.remodel2.spendRepeats, map: state.files.remodel2.map } : null,
     bucketOverrides: state.bucketOverrides, outcomeGroups: state.outcomeGroups, outcomeExclude: state.outcomeExclude, channelFlags: state.channelFlags, channelChanges: state.channelChanges,
-    mapBuckets: [...state.mapBuckets], notes: state.notes, view: state.view, snapshots: state.snapshots, clientName: state.clientName,
+    mapBuckets: [...state.mapBuckets], remodelMapBuckets: [...state.remodelMapBuckets], mapCfg: state.mapCfg, remodelMapCfg: state.remodelMapCfg, notes: state.notes, view: state.view, snapshots: state.snapshots, clientName: state.clientName,
   };
   const json = JSON.stringify(data).replace(/<\/script/gi, '<\\/script');   // never let a channel/outcome name close the injected <script> early
   const html = PRISTINE_HTML.replace(/<body([^>]*)>/i, (m0, attrs) => `<body${attrs}><script>window.__EXPORT_STATE__=${json};<\/script>`);
@@ -1607,15 +1619,20 @@ $('#exportPdfBtn').addEventListener('click', exportPdf);
 function hydrateFromExport(data) {
   state.files.prod = { name: data.prod.name, agg: data.prod.agg, spendRepeats: data.prod.spendRepeats, map: data.prod.map || {}, rows: [], headers: [] };
   state.files.remodel = { name: data.remodel.name, agg: data.remodel.agg, spendRepeats: data.remodel.spendRepeats, map: data.remodel.map || {}, rows: [], headers: [] };
-  renderSlot('prod'); renderSlot('remodel');
+  state.files.remodel2 = data.remodel2 ? { name: data.remodel2.name, agg: data.remodel2.agg, spendRepeats: data.remodel2.spendRepeats, map: data.remodel2.map || {}, rows: [], headers: [] } : null;
+  renderSlot('prod'); renderSlot('remodel'); renderSlot('remodel2');
   $('#badge-prod').textContent = `${data.prod.name} · loaded from export`;
   $('#badge-remodel').textContent = `${data.remodel.name} · loaded from export`;
+  if (state.files.remodel2) $('#badge-remodel2').textContent = `${data.remodel2.name} · loaded from export`;
   state.bucketOverrides = data.bucketOverrides || {};
   state.outcomeGroups = data.outcomeGroups || {};
   state.outcomeExclude = data.outcomeExclude || {};
   state.channelFlags = data.channelFlags || {};
   state.channelChanges = data.channelChanges || [];
   state.mapBuckets = new Map(data.mapBuckets || []);
+  state.remodelMapBuckets = new Map(data.remodelMapBuckets || data.mapBuckets || []);
+  state.mapCfg = data.mapCfg || state.mapCfg;
+  state.remodelMapCfg = data.remodelMapCfg || data.mapCfg || state.remodelMapCfg;
   state.notes = Object.assign({ setup: '', mix: '', paid: '', detail: '', compare: '' }, data.notes);
   state.snapshots = Array.isArray(data.snapshots) ? data.snapshots : [];
   state.clientName = data.clientName || '';
@@ -1642,10 +1659,11 @@ function hydrateFromExport(data) {
    already restored into state.view.tab rather than always jumping to Mix. Also used to reopen a working copy
    after its first visit, so edits made since opening it (notes, channel changes, etc.) aren't lost. */
 function restoreSavedSetup() {
-  for (const which of ['prod', 'remodel']) Object.assign(state.files[which], { rows: [], headers: [] });
-  renderSlot('prod'); renderSlot('remodel');
+  for (const which of ['prod', 'remodel', 'remodel2']) if (state.files[which]) Object.assign(state.files[which], { rows: [], headers: [] });
+  renderSlot('prod'); renderSlot('remodel'); renderSlot('remodel2');
   $('#badge-prod').textContent = `${state.files.prod.name} · restored from your last session`;
   $('#badge-remodel').textContent = `${state.files.remodel.name} · restored from your last session`;
+  if (state.files.remodel2) $('#badge-remodel2').textContent = `${state.files.remodel2.name} · restored from your last session`;
   refreshSetup();
   if (state.isWorkingCopy) $('#tabs [data-tab="setup"]').style.display = 'none';
   if (['mix', 'paid', 'detail', 'compare', 'snapshots'].includes(state.view.tab)) {
@@ -1672,7 +1690,7 @@ $('#forgetSetupBtn').addEventListener('click', () => {
 // further edits made after first opening it aren't lost) always wins over a freshly-baked-in export snapshot.
 if (state.files.prod?.agg && state.files.remodel?.agg) restoreSavedSetup();
 else if (window.__EXPORT_STATE__) hydrateFromExport(window.__EXPORT_STATE__);
-else { renderSlot('prod'); renderSlot('remodel'); }
+else { renderSlot('prod'); renderSlot('remodel'); renderSlot('remodel2'); }
 </script>
 </body>
 </html>
