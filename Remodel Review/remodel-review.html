@@ -93,6 +93,7 @@
     .snapshot-item { border: 1px solid var(--border); border-radius: 8px; padding: 12px; background: #fff; }
     .snapshot-item-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 8px; }
     .snapshot-item-head h3 { margin: 0; }
+    .snapshot-title-input { width: min(340px, 42vw); padding: 5px 7px; font-weight: 600; }
     .snapshot-drag { cursor: grab; user-select: none; color: var(--muted); font-size: 18px; line-height: 1; padding: 4px 6px; border: 1px solid var(--border); border-radius: 5px; }
     .snapshot-drag:active { cursor: grabbing; }
     .snapshot-item.drag-over { outline: 2px dashed var(--primary); outline-offset: 2px; }
@@ -1090,7 +1091,7 @@ function updateSnapshotTab() {
 function renderSnapshots() {
   updateSnapshotTab();
   const unassigned = state.snapshots.filter(s => !s.section), assigned = [1, 2, 3, 4].map(n => state.snapshots.filter(s => String(s.section) === String(n)));
-  const item = (s, i) => `<article class="snapshot-item" data-snapshot-item="${esc(s.id)}" data-section="${esc(s.section || '')}"><div class="snapshot-item-head"><div style="display:flex;align-items:center;gap:8px"><span class="snapshot-drag" draggable="true" data-snapshot-drag="${esc(s.id)}" title="Drag to reorder" aria-label="Drag to reorder">⠿</span><div><h3>${esc(i + 1)}. ${esc(s.title)}</h3><small class="muted">${esc(s.tab)}</small></div></div><div style="display:flex;gap:8px;align-items:center"><label style="margin:0">PDF section <select data-snapshot-section="${esc(s.id)}" style="width:auto"><option value="">Unassigned</option>${[1, 2, 3, 4].map(n => `<option value="${n}" ${String(s.section || '') === String(n) ? 'selected' : ''}>${n}</option>`).join('')}</select></label><button class="btn" data-remove-snapshot="${esc(s.id)}" type="button">Remove</button></div></div><details><summary>Show snapshot</summary><div class="snapshot-preview">${s.html}</div></details></article>`;
+  const item = (s, i) => `<article class="snapshot-item" data-snapshot-item="${esc(s.id)}" data-section="${esc(s.section || '')}"><div class="snapshot-item-head"><div style="display:flex;align-items:center;gap:8px"><span class="snapshot-drag" draggable="true" data-snapshot-drag="${esc(s.id)}" title="Drag to reorder" aria-label="Drag to reorder">⠿</span><div><h3><span>${esc(i + 1)}.</span> <input class="snapshot-title-input" type="text" data-snapshot-title="${esc(s.id)}" aria-label="Snapshot title" value="${esc(s.title)}"></h3><small class="muted">${esc(s.tab)}</small></div></div><div style="display:flex;gap:8px;align-items:center"><label style="margin:0">PDF section <select data-snapshot-section="${esc(s.id)}" style="width:auto"><option value="">Unassigned</option>${[1, 2, 3, 4].map(n => `<option value="${n}" ${String(s.section || '') === String(n) ? 'selected' : ''}>${n}</option>`).join('')}</select></label><button class="btn" data-remove-snapshot="${esc(s.id)}" type="button">Remove</button></div></div><details><summary>Show snapshot</summary><div class="snapshot-preview">${s.html}</div></details></article>`;
   const group = (title, items) => `<section class="snapshot-group"><h3>${title}</h3>${items.length ? `<div class="snapshot-list">${items.map(s => item(s, state.snapshots.indexOf(s))).join('')}</div>` : '<p class="muted">No snapshots assigned.</p>'}</section>`;
   $('#view').innerHTML = `<div class="card"><h2>Snapshot bucket</h2><p class="hint">Assign snapshots to PDF sections 1–4. Unassigned snapshots stay in the bucket and are excluded from the PDF. Drag the handle to reorder snapshots within a section. Entries are collapsed to keep the list compact.</p>
     ${state.snapshots.length ? `${group('Unassigned — shown first', unassigned)}${assigned.map((items, i) => group(`Section ${i + 1}`, items)).join('')}` : '<div class="empty">No snapshots yet. Use “Snapshot element” on any section to add it here.</div>'}</div>`;
@@ -1104,6 +1105,12 @@ $('#view').addEventListener('click', e => {
 $('#view').addEventListener('change', e => {
   const section = e.target.closest('[data-snapshot-section]');
   if (section) { const snapshot = state.snapshots.find(s => s.id === section.dataset.snapshotSection); if (snapshot) { snapshot.section = section.value; persist(); renderSnapshots(); } }
+});
+$('#view').addEventListener('input', e => {
+  const title = e.target.closest('[data-snapshot-title]');
+  if (!title) return;
+  const snapshot = state.snapshots.find(s => s.id === title.dataset.snapshotTitle);
+  if (snapshot) { snapshot.title = title.value; persist(); }
 });
 let draggingSnapshotId = null;
 $('#view').addEventListener('dragstart', e => {
