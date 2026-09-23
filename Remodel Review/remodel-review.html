@@ -1417,9 +1417,8 @@ function detailSideView(W) {
   const F = dataFile(file);
   const catItems = [[COMBINED, 'All'], ...allCategories()].filter(([c]) => c === COMBINED ? F.agg.length : F.agg.some(a => norm(a.cat) === c));
   const outItems = allOutcomes().map(o => [o, o]).filter(([k]) => catItems.some(([c]) => slice(file, c, k, v.level, true).has));
-  // Spend and iROAS have their OWN category picker (a single choice, not the Categories checklist below), kept
-  // separate from the revenue columns so the two can be scoped independently — pick "All" or one specific
-  // category for Spend/iROAS regardless of which categories/outcomes are ticked for the revenue table.
+  // Spend has its own category picker. iROAS always combines every product category and outcome,
+  // independently of the revenue columns and the spend category selection.
   const spendCatPick = v.detailSpendCat[W] ?? COMBINED;
   const spendCat = catItems.some(([c]) => c === spendCatPick) ? spendCatPick : COMBINED;
   const scopeCats = catItems.filter(([c]) => c === spendCat);
@@ -1427,13 +1426,18 @@ function detailSideView(W) {
   // If the file repeats a channel's total spend on every outcome and category row (the Setup checkbox), that
   // spend must be counted once across categories (take the largest), not added up; revenue is always split by
   // category, so it is summed.
-  const grand = new Map();
+  const spendTotals = new Map(), iroasTotals = new Map();
   for (const [c] of scopeCats) for (const r of slice(file, c, COMBINED, v.level, true).rows) {
-    const g = grand.get(r.key) || { spend: 0, rev: 0 };
-    g.spend += r.spend; g.rev += r.rev; grand.set(r.key, g);
+    spendTotals.set(r.key, (spendTotals.get(r.key) || 0) + r.spend);
   }
-  const spendOf = new Map([...grand].map(([k, g]) => [k, g.spend])), revOf = new Map([...grand].map(([k, g]) => [k, g.rev]));
-  const roasOf = r => spendOf.get(r.key) ? revOf.get(r.key) / spendOf.get(r.key) : null;
+  for (const r of slice(file, '__all__', COMBINED, v.level, true).rows) {
+    const g = iroasTotals.get(r.key) || { spend: 0, rev: 0 };
+    g.spend += r.spend; g.rev += r.rev; iroasTotals.set(r.key, g);
+  }
+  const spendOf = spendTotals;
+  const revOf = new Map([...iroasTotals].map(([k, g]) => [k, g.rev]));
+  const iroasSpendOf = new Map([...iroasTotals].map(([k, g]) => [k, g.spend]));
+  const roasOf = r => iroasSpendOf.get(r.key) ? revOf.get(r.key) / iroasSpendOf.get(r.key) : null;
   const cgroups = catItems.filter(([c]) => !catOff[c]).map(([c, name]) => ({
     cat: c, name,
     cols: outItems.filter(([k]) => !off[k]).map(([k, label]) => sideCol(W, c, name, k, label)).filter(x => x.has),
@@ -1471,7 +1475,7 @@ function detailSideView(W) {
   };
   const nCols = 4 + cols.length;
   const cells = colFn => cgroups.map(g => g.cols.map((c, ci) => `<td class="num ${ci ? '' : 'sepl'}">${colFn(c)}</td>`).join('')).join('');
-  const lineRoas = (rowsIn, paidOnly) => { const sp = rowsIn.reduce((t, r) => t + (spendOf.get(r.key) || 0), 0); return div(rowsIn.filter(r => !paidOnly || r.bucket === 'paid').reduce((t, r) => t + (revOf.get(r.key) || 0), 0), sp); };
+  const lineRoas = (rowsIn, paidOnly) => { const sp = rowsIn.reduce((t, r) => t + (iroasSpendOf.get(r.key) || 0), 0); return div(rowsIn.filter(r => !paidOnly || r.bucket === 'paid').reduce((t, r) => t + (revOf.get(r.key) || 0), 0), sp); };
   const lineTotRev = rowsIn => cols.reduce((t, c) => t + total(c, rowsIn).rev, 0);
   const line = (label, rowsIn, cls, paidOnly, attrs = '') => `<tr class="${cls}"${attrs}><td class="wrap">${label}</td><td class="num">${fmtMoney(rowsIn.reduce((t, r) => t + (spendOf.get(r.key) || 0), 0))}</td><td class="num">${fmtMoney(lineTotRev(rowsIn))}</td><td class="num">${fmtX(lineRoas(rowsIn, paidOnly))}</td>${cells(c => fmtMetric(metric, total(c, rowsIn)[metric]))}</tr>`;
   // Each bucket group's rows can be collapsed to just its subtotal line — the subtotal itself always covers
@@ -1485,7 +1489,7 @@ function detailSideView(W) {
     const rowsHtml = collapsed ? '' : g.rows.map(r => `<tr><td class="wrap">${esc(r.name)}${W === 'R' ? newBadge(r.chKey) : ''}</td><td class="num">${fmtMoney(spendOf.get(r.key))}</td><td class="num">${fmtMoney(rowTotRev(r))}</td><td class="num">${fmtX(roasOf(r))}</td>${cells(c => fmtMetric(metric, c.rows.get(r.key)?.[metric]))}</tr>`).join('');
     return header + rowsHtml;
   }).join('');
-  const table = !cols.length ? '<div class="empty">Check at least one category and outcome.</div>' : `<h3 style="padding:0 16px;margin:0 0 8px">${mLabel} <span class="muted" style="font-weight:500;font-size:12px">· Spend &amp; iROAS: ${esc(scopeLabel)} · Total revenue: the categories/outcomes ticked below</span></h3><div class="tablewrap"><table class="dtable"><thead>
+  const table = !cols.length ? '<div class="empty">Check at least one category and outcome.</div>' : `<h3 style="padding:0 16px;margin:0 0 8px">${mLabel} <span class="muted" style="font-weight:500;font-size:12px">· Spend: ${esc(scopeLabel)} · iROAS: all product categories and outcomes · Total revenue: the categories/outcomes ticked below</span></h3><div class="tablewrap"><table class="dtable"><thead>
       <tr><th rowspan="2" class="sortable" data-sort="name" data-ss="${W}">${lvl}${st.key === 'name' ? dirMark : ''}</th><th rowspan="2" class="sortable" data-sort="spend" data-ss="${W}">Spend${st.key === 'spend' ? dirMark : ''}</th><th rowspan="2" class="sortable" data-sort="totrev" data-ss="${W}" title="Sum of the outcome columns shown to the right (the ticked categories and outcomes)">Total revenue${st.key === 'totrev' ? dirMark : ''}</th><th rowspan="2" class="sortable" data-sort="roas" data-ss="${W}" title="Revenue for the Spend category ÷ Spend">iROAS${st.key === 'roas' ? dirMark : ''}</th>${cgroups.map(g => `<th colspan="${g.cols.length}" class="grp sepl">${esc(g.name)}</th>`).join('')}</tr>
       <tr>${cgroups.map(g => g.cols.map((c, ci) => `<th class="sortable ${ci ? '' : 'sepl'}" data-sk="${esc(c.id)}" data-ss="${W}">${esc(c.label)}${st.key === 'val' && sc === c ? dirMark : ''}</th>`).join('')).join('')}</tr>
       </thead><tbody>${body || `<tr><td colspan="${nCols}" class="empty">No channels match.</td></tr>`}
