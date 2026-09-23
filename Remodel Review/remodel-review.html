@@ -102,6 +102,21 @@
     .snapshot-group > h3 { padding-bottom: 6px; border-bottom: 1px solid var(--border); }
     .snapshot-print-item { margin-bottom: 8mm; }
     .snapshot-print-item > h3 { margin: 4mm 0 1mm; font-size: 11pt; }
+    .pdf-onepage { width: 1000px; height: 700px; display: flex; flex-direction: column; overflow: hidden; background: #fff; color: #111827; font: 8pt/1.2 "Inter", Arial, sans-serif; }
+    .pdf-header { flex: 0 0 auto; display: flex; align-items: baseline; gap: 12px; border-bottom: 1px solid #cbd5e1; padding: 0 0 5px; margin-bottom: 7px; }
+    .pdf-header h1 { margin: 0; font-size: 18pt; }
+    .pdf-header p { margin: 0; color: #475569; font-size: 12pt; }
+    .pdf-grid { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); gap: 7px; }
+    .pdf-section { min-width: 0; min-height: 0; overflow: hidden; border: 1px solid #cbd5e1; border-radius: 4px; padding: 6px; display: flex; flex-direction: column; }
+    .pdf-section h2 { flex: 0 0 auto; margin: 0 0 4px; font-size: 10pt; color: #0f766e; }
+    .pdf-section-content { flex: 1 1 auto; min-height: 0; overflow: hidden; }
+    .pdf-section-inner { transform-origin: top left; }
+    .pdf-onepage .card { padding: 4px; margin: 0 0 4px; border-radius: 2px; box-shadow: none; }
+    .pdf-onepage h3 { margin: 2px 0; font-size: 8pt; }
+    .pdf-onepage th, .pdf-onepage td { padding: 2px 3px; font-size: 7px; }
+    .pdf-onepage .tablewrap, .pdf-onepage .tablewrap.short { max-height: none !important; overflow: visible !important; border-radius: 0; }
+    .pdf-grid.count-1 { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
+    .pdf-grid.count-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: minmax(0, 1fr); }
     .snapshot-item details > summary { cursor: pointer; color: var(--primary-dark); font-size: 12px; font-weight: 600; }
     .snapshot-item details[open] > summary { margin-bottom: 8px; }
     .empty { padding: 30px; text-align: center; color: var(--muted); }
@@ -130,7 +145,7 @@
     .print-cover p { margin: 2px 0; color: var(--muted); }
     .print-cover .print-notes { margin-top: 10px; white-space: pre-wrap; color: var(--text); }
     .print-section h2 { margin: 0 0 14px; font-size: 18px; }
-    @page { size: landscape; margin: 10mm; }
+    @page { size: letter landscape; margin: 5mm; }
     @media print {
       body > *:not(#printRoot) { display: none !important; }
       html, body { width: auto; margin: 0; padding: 0; background: #fff; }
@@ -155,6 +170,10 @@
       .snapshot-btn, .snapshot-item-head button { display: none !important; }
       .snapshot-print-item { break-inside: auto; page-break-inside: auto; }
       .hint { font-size: 8pt; }
+      #printRoot { width: 100%; height: calc(100vh - 10mm); }
+      .pdf-onepage { width: 100%; height: 100%; max-height: 100%; break-inside: avoid; page-break-inside: avoid; }
+      .pdf-section .tablewrap, .pdf-section .tablewrap.short { max-height: none !important; overflow: visible !important; }
+      .pdf-onepage .snapshot-btn { display: none !important; }
     }
   </style>
 </head>
@@ -1690,6 +1709,16 @@ function shrinkTablesToFit(root) {
     wrap.style.setProperty('overflow', 'hidden', 'important');
   });
 }
+function fitPdfSections(root) {
+  root.querySelectorAll('.pdf-section').forEach(section => {
+    const viewport = section.querySelector('.pdf-section-content'), content = section.querySelector('.pdf-section-inner');
+    if (!viewport || !content) return;
+    const width = Math.max(content.scrollWidth, content.getBoundingClientRect().width, 1);
+    const height = Math.max(content.scrollHeight, 1);
+    const scale = Math.min(1, viewport.clientWidth / width, viewport.clientHeight / height);
+    content.style.transform = `scale(${scale})`;
+  });
+}
 function exportPdf() {
   const included = state.snapshots.filter(s => ['1', '2', '3', '4'].includes(String(s.section)));
   if (!included.length) { alert('Assign at least one snapshot to a PDF section before exporting.'); return; }
@@ -1697,12 +1726,13 @@ function exportPdf() {
   const groups = [
     ...[1, 2, 3, 4].map(n => ({ title: sectionNames[n], items: included.filter(s => String(s.section) === String(n)) })),
   ].filter(g => g.items.length);
-  const sections = groups.map(g => `<section class="print-section"><h2>${esc(g.title)}</h2>${g.items.map(s => `<div class="snapshot-print-item">${s.html}</div>`).join('')}</section>`);
+  const sections = groups.map(g => `<section class="pdf-section"><h2>${esc(g.title)}</h2><div class="pdf-section-content"><div class="pdf-section-inner">${g.items.map(s => s.html).join('')}</div></div></section>`);
   let root = document.getElementById('printRoot');
   if (!root) { root = document.createElement('div'); root.id = 'printRoot'; document.body.appendChild(root); }
-  root.innerHTML = `<div class="print-cover"><h1>Remodel Review</h1>${state.clientName ? `<p>${esc(state.clientName)}</p>` : ''}</div>${sections.join('')}`;
+  root.innerHTML = `<div class="pdf-onepage"><header class="pdf-header"><h1>Remodel Review</h1>${state.clientName ? `<p>${esc(state.clientName)}</p>` : ''}</header><main class="pdf-grid count-${groups.length}">${sections.join('')}</main></div>`;
   root.setAttribute('inert', '');   // keeps this off-screen copy out of tab order / screen readers until it's removed
   shrinkTablesToFit(root);
+  fitPdfSections(root);
   window.print();
 }
 $('#exportPdfBtn').addEventListener('click', exportPdf);
