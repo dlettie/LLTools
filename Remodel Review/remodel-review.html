@@ -1069,9 +1069,35 @@ function addSnapshotButtons() {
   $('#view').querySelectorAll('.card').forEach((card, i) => {
     if (!card.querySelector('table, textarea, #ccCard')) return;
     if (card.querySelector('.snapshot-btn')) return;
+    if (state.view.tab === 'paid' && card.querySelector('table')) {
+      for (const side of ['P', 'R']) {
+        const b = document.createElement('button'); b.type = 'button'; b.className = 'btn snapshot-btn';
+        b.dataset.snapshotPaidSide = side; b.textContent = `Snapshot ${SIDE_NAME[side]} table`; card.appendChild(b);
+      }
+      return;
+    }
     const b = document.createElement('button'); b.type = 'button'; b.className = 'btn snapshot-btn';
     b.dataset.snapshotCard = String(i); b.textContent = 'Snapshot element'; card.appendChild(b);
   });
+}
+function paidTableSnapshot(side) {
+  const source = $('#view .tablewrap table');
+  if (!source) return null;
+  const table = source.cloneNode(true), sideIndex = side === 'P' ? 0 : 1, start = sideIndex * 4;
+  table.querySelectorAll('tr').forEach(row => {
+    const cells = [...row.children];
+    if (row.parentElement.tagName === 'THEAD' && cells.length === 2 && cells.every(cell => cell.colSpan === 4)) {
+      const selected = cells[sideIndex].cloneNode(true); selected.colSpan = 4;
+      row.replaceChildren(selected);
+    } else if (cells.length >= 8) {
+      cells.forEach((cell, i) => { if (i < start || i >= start + 4) cell.remove(); });
+    } else if (cells.length === 1 && cells[0].colSpan === 8) cells[0].colSpan = 4;
+  });
+  const card = document.createElement('div'); card.className = 'card';
+  const heading = document.createElement('h3'); heading.textContent = SIDE_NAME[side];
+  const wrap = document.createElement('div'); wrap.className = 'tablewrap'; wrap.appendChild(table);
+  card.append(heading, wrap);
+  return card;
 }
 function takeSnapshot(element, label, tab) {
   const clone = element.cloneNode(true);
@@ -1096,6 +1122,12 @@ function renderSnapshots() {
     ${state.snapshots.length ? `${group('Unassigned — shown first', unassigned)}${assigned.map((items, i) => group(`Section ${i + 1}`, items)).join('')}` : '<div class="empty">No snapshots yet. Use “Snapshot element” on any section to add it here.</div>'}</div>`;
 }
 $('#view').addEventListener('click', e => {
+  const paidSide = e.target.closest('[data-snapshot-paid-side]');
+  if (paidSide) {
+    const side = paidSide.dataset.snapshotPaidSide, card = paidTableSnapshot(side);
+    if (card) takeSnapshot(card, `paid · ${SIDE_NAME[side]} contribution`, 'paid');
+    return;
+  }
   const snap = e.target.closest('[data-snapshot-card]');
   if (snap) { const card = snap.closest('.card'); takeSnapshot(card, `${state.view.tab} · ${snapshotLabel(card, +snap.dataset.snapshotCard)}`, state.view.tab); return; }
   const remove = e.target.closest('[data-remove-snapshot]');
