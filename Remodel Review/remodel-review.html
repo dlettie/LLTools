@@ -93,6 +93,10 @@
     .snapshot-item { border: 1px solid var(--border); border-radius: 8px; padding: 12px; background: #fff; }
     .snapshot-item-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 8px; }
     .snapshot-item-head h3 { margin: 0; }
+    .snapshot-drag { cursor: grab; user-select: none; color: var(--muted); font-size: 18px; line-height: 1; padding: 4px 6px; border: 1px solid var(--border); border-radius: 5px; }
+    .snapshot-drag:active { cursor: grabbing; }
+    .snapshot-item.drag-over { outline: 2px dashed var(--primary); outline-offset: 2px; }
+    .snapshot-item.dragging { opacity: .45; }
     .snapshot-preview { overflow: auto; }
     .snapshot-group { margin-top: 18px; }
     .snapshot-group > h3 { padding-bottom: 6px; border-bottom: 1px solid var(--border); }
@@ -1086,9 +1090,9 @@ function updateSnapshotTab() {
 function renderSnapshots() {
   updateSnapshotTab();
   const unassigned = state.snapshots.filter(s => !s.section), assigned = [1, 2, 3, 4].map(n => state.snapshots.filter(s => String(s.section) === String(n)));
-  const item = (s, i) => `<article class="snapshot-item"><div class="snapshot-item-head"><div><h3>${esc(i + 1)}. ${esc(s.title)}</h3><small class="muted">${esc(s.tab)}</small></div><div style="display:flex;gap:8px;align-items:center"><label style="margin:0">PDF section <select data-snapshot-section="${esc(s.id)}" style="width:auto"><option value="">Unassigned</option>${[1, 2, 3, 4].map(n => `<option value="${n}" ${String(s.section || '') === String(n) ? 'selected' : ''}>${n}</option>`).join('')}</select></label><button class="btn" data-remove-snapshot="${esc(s.id)}" type="button">Remove</button></div></div><details><summary>Show snapshot</summary><div class="snapshot-preview">${s.html}</div></details></article>`;
+  const item = (s, i) => `<article class="snapshot-item" data-snapshot-item="${esc(s.id)}" data-section="${esc(s.section || '')}"><div class="snapshot-item-head"><div style="display:flex;align-items:center;gap:8px"><span class="snapshot-drag" draggable="true" data-snapshot-drag="${esc(s.id)}" title="Drag to reorder" aria-label="Drag to reorder">⠿</span><div><h3>${esc(i + 1)}. ${esc(s.title)}</h3><small class="muted">${esc(s.tab)}</small></div></div><div style="display:flex;gap:8px;align-items:center"><label style="margin:0">PDF section <select data-snapshot-section="${esc(s.id)}" style="width:auto"><option value="">Unassigned</option>${[1, 2, 3, 4].map(n => `<option value="${n}" ${String(s.section || '') === String(n) ? 'selected' : ''}>${n}</option>`).join('')}</select></label><button class="btn" data-remove-snapshot="${esc(s.id)}" type="button">Remove</button></div></div><details><summary>Show snapshot</summary><div class="snapshot-preview">${s.html}</div></details></article>`;
   const group = (title, items) => `<section class="snapshot-group"><h3>${title}</h3>${items.length ? `<div class="snapshot-list">${items.map(s => item(s, state.snapshots.indexOf(s))).join('')}</div>` : '<p class="muted">No snapshots assigned.</p>'}</section>`;
-  $('#view').innerHTML = `<div class="card"><h2>Snapshot bucket</h2><p class="hint">Assign snapshots to PDF sections 1–4. Unassigned snapshots stay in the bucket and are excluded from the PDF. Entries are collapsed to keep the list compact.</p>
+  $('#view').innerHTML = `<div class="card"><h2>Snapshot bucket</h2><p class="hint">Assign snapshots to PDF sections 1–4. Unassigned snapshots stay in the bucket and are excluded from the PDF. Drag the handle to reorder snapshots within a section. Entries are collapsed to keep the list compact.</p>
     ${state.snapshots.length ? `${group('Unassigned — shown first', unassigned)}${assigned.map((items, i) => group(`Section ${i + 1}`, items)).join('')}` : '<div class="empty">No snapshots yet. Use “Snapshot element” on any section to add it here.</div>'}</div>`;
 }
 $('#view').addEventListener('click', e => {
@@ -1100,6 +1104,40 @@ $('#view').addEventListener('click', e => {
 $('#view').addEventListener('change', e => {
   const section = e.target.closest('[data-snapshot-section]');
   if (section) { const snapshot = state.snapshots.find(s => s.id === section.dataset.snapshotSection); if (snapshot) { snapshot.section = section.value; persist(); renderSnapshots(); } }
+});
+let draggingSnapshotId = null;
+$('#view').addEventListener('dragstart', e => {
+  const handle = e.target.closest('[data-snapshot-drag]');
+  if (!handle) { e.preventDefault(); return; }
+  draggingSnapshotId = handle.dataset.snapshotDrag;
+  e.dataTransfer.setData('text/plain', draggingSnapshotId);
+  e.dataTransfer.effectAllowed = 'move';
+  handle.closest('[data-snapshot-item]')?.classList.add('dragging');
+});
+$('#view').addEventListener('dragover', e => {
+  const target = e.target.closest('[data-snapshot-item]');
+  const source = state.snapshots.find(s => s.id === draggingSnapshotId);
+  if (!target || !source || String(source.section || '') !== target.dataset.section) return;
+  e.preventDefault(); e.dataTransfer.dropEffect = 'move';
+  $('#view').querySelectorAll('.snapshot-item.drag-over').forEach(el => el.classList.remove('drag-over'));
+  target.classList.add('drag-over');
+});
+$('#view').addEventListener('drop', e => {
+  const target = e.target.closest('[data-snapshot-item]');
+  const id = e.dataTransfer.getData('text/plain') || draggingSnapshotId;
+  const source = state.snapshots.find(s => s.id === id);
+  if (!target || !source || String(source.section || '') !== target.dataset.section || id === target.dataset.snapshotItem) return;
+  e.preventDefault();
+  const from = state.snapshots.findIndex(s => s.id === id);
+  const after = e.clientY > target.getBoundingClientRect().top + target.getBoundingClientRect().height / 2;
+  const [moved] = state.snapshots.splice(from, 1);
+  const to = state.snapshots.findIndex(s => s.id === target.dataset.snapshotItem) + (after ? 1 : 0);
+  state.snapshots.splice(to, 0, moved);
+  persist(); renderSnapshots();
+});
+$('#view').addEventListener('dragend', () => {
+  draggingSnapshotId = null;
+  $('#view').querySelectorAll('.snapshot-item.dragging, .snapshot-item.drag-over').forEach(el => el.classList.remove('dragging', 'drag-over'));
 });
 $('#snapshotSetupNotes').addEventListener('click', () => takeSnapshot($('#snapshotSetupNotes').closest('.card'), 'Setup · Notes', 'setup'));
 
