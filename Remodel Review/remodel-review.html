@@ -1469,15 +1469,15 @@ function detailSideView(W) {
   const dirMark = ' ' + (st.dir > 0 ? '▲' : '▼');
   const lvl = v.level === 'tactic' ? 'Channel › tactic' : 'Channel';
   const total = (c, rowsIn) => {
-    let spend = 0, rev = 0, paidRev = 0;
-    for (const r of rowsIn) { const e = c.rows.get(r.key); if (e) { spend += e.spend; rev += e.rev; if (e.bucket === 'paid') paidRev += e.rev; } }
-    return { spend, rev, share: div(rev, c.tot), roas: div(paidRev, spend) };   // total iROAS uses paid revenue only
+    let spend = 0, rev = 0;
+    for (const r of rowsIn) { const e = c.rows.get(r.key); if (e) { spend += e.spend; rev += e.rev; } }
+    return { spend, rev, share: div(rev, c.tot), roas: div(rev, spend) };
   };
   const nCols = 4 + cols.length;
   const cells = colFn => cgroups.map(g => g.cols.map((c, ci) => `<td class="num ${ci ? '' : 'sepl'}">${colFn(c)}</td>`).join('')).join('');
-  const lineRoas = (rowsIn, paidOnly) => { const sp = rowsIn.reduce((t, r) => t + (iroasSpendOf.get(r.key) || 0), 0); return div(rowsIn.filter(r => !paidOnly || r.bucket === 'paid').reduce((t, r) => t + (revOf.get(r.key) || 0), 0), sp); };
+  const lineRoas = rowsIn => { const sp = rowsIn.reduce((t, r) => t + (iroasSpendOf.get(r.key) || 0), 0); return div(rowsIn.reduce((t, r) => t + (revOf.get(r.key) || 0), 0), sp); };
   const lineTotRev = rowsIn => cols.reduce((t, c) => t + total(c, rowsIn).rev, 0);
-  const line = (label, rowsIn, cls, paidOnly, attrs = '') => `<tr class="${cls}"${attrs}><td class="wrap">${label}</td><td class="num">${fmtMoney(rowsIn.reduce((t, r) => t + (spendOf.get(r.key) || 0), 0))}</td><td class="num">${fmtMoney(lineTotRev(rowsIn))}</td><td class="num">${fmtX(lineRoas(rowsIn, paidOnly))}</td>${cells(c => fmtMetric(metric, total(c, rowsIn)[metric]))}</tr>`;
+  const line = (label, rowsIn, cls, attrs = '') => `<tr class="${cls}"${attrs}><td class="wrap">${label}</td><td class="num">${fmtMoney(rowsIn.reduce((t, r) => t + (spendOf.get(r.key) || 0), 0))}</td><td class="num">${fmtMoney(lineTotRev(rowsIn))}</td><td class="num">${fmtX(lineRoas(rowsIn))}</td>${cells(c => fmtMetric(metric, total(c, rowsIn)[metric]))}</tr>`;
   // Each bucket group's rows can be collapsed to just its subtotal line — the subtotal itself always covers
   // every row in the bucket regardless of collapse state or the "Show" limit.
   const bucketCollapsed = (v.detailBucketCollapsed[W] ||= {});
@@ -1485,7 +1485,7 @@ function detailSideView(W) {
     const collapsed = !!bucketCollapsed[g.b];
     const arrow = `<span class="muted" style="display:inline-block;width:12px;font-size:10px">${collapsed ? '▸' : '▾'}</span>`;
     const header = line(`${arrow}<span class="dot b-${g.b}"></span>${BUCKET_LABEL[g.b]} <span class="muted">(${g.rows.length}${g.rows.length < g.all.length ? ' of ' + g.all.length : ''})</span>`,
-      g.all, 'section', undefined, ` data-bucket-toggle="${W}|${g.b}" style="cursor:pointer"`);
+      g.all, 'section', ` data-bucket-toggle="${W}|${g.b}" style="cursor:pointer"`);
     const rowsHtml = collapsed ? '' : g.rows.map(r => `<tr><td class="wrap">${esc(r.name)}${W === 'R' ? newBadge(r.chKey) : ''}</td><td class="num">${fmtMoney(spendOf.get(r.key))}</td><td class="num">${fmtMoney(rowTotRev(r))}</td><td class="num">${fmtX(roasOf(r))}</td>${cells(c => fmtMetric(metric, c.rows.get(r.key)?.[metric]))}</tr>`).join('');
     return header + rowsHtml;
   }).join('');
@@ -1493,7 +1493,7 @@ function detailSideView(W) {
       <tr><th rowspan="2" class="sortable" data-sort="name" data-ss="${W}">${lvl}${st.key === 'name' ? dirMark : ''}</th><th rowspan="2" class="sortable" data-sort="spend" data-ss="${W}">Spend${st.key === 'spend' ? dirMark : ''}</th><th rowspan="2" class="sortable" data-sort="totrev" data-ss="${W}" title="Sum of the outcome columns shown to the right (the ticked categories and outcomes)">Total revenue${st.key === 'totrev' ? dirMark : ''}</th><th rowspan="2" class="sortable" data-sort="roas" data-ss="${W}" title="Revenue for the Spend category ÷ Spend">iROAS${st.key === 'roas' ? dirMark : ''}</th>${cgroups.map(g => `<th colspan="${g.cols.length}" class="grp sepl">${esc(g.name)}</th>`).join('')}</tr>
       <tr>${cgroups.map(g => g.cols.map((c, ci) => `<th class="sortable ${ci ? '' : 'sepl'}" data-sk="${esc(c.id)}" data-ss="${W}">${esc(c.label)}${st.key === 'val' && sc === c ? dirMark : ''}</th>`).join('')).join('')}</tr>
       </thead><tbody>${body || `<tr><td colspan="${nCols}" class="empty">No channels match.</td></tr>`}
-      ${line(`Total (${n} channels)`, list, 'total', true)}</tbody></table></div>`;
+      ${line(`Total (${n} channels)`, list, 'total')}</tbody></table></div>`;
   return { html: `<div class="card" style="padding:0">${head}${table}</div>`, tableHtml: table, list, cols, outItems, catItems, n, shown };
 }
 
