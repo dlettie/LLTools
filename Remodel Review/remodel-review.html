@@ -105,6 +105,8 @@
     .pdf-header h1 { margin: 0; font-size: 20pt; }
     .pdf-header p { margin: 0; color: #475569; font-size: 13pt; }
     .pdf-section-title { flex: 0 0 auto; margin: 0 0 3mm; color: #0f766e; font-size: 14pt; }
+    .pdf-section-group { margin: 0 0 7mm; }
+    .pdf-section-group .pdf-section-title { margin-top: 6mm; padding-bottom: 1.5mm; border-bottom: 1px solid #cbd5e1; }
     .pdf-page-content { flex: 1 0 auto; min-height: 0; }
     .pdf-page-inner { }
     .pdf-page .card { padding: 3mm; margin: 0 0 2mm; box-shadow: none; }
@@ -170,7 +172,7 @@
       .hint { font-size: 8pt; }
       #printRoot { width: 100%; }
       .pdf-page { display: block; width: 100%; min-height: 0; max-width: none; padding: 7mm; box-shadow: none; break-after: auto; page-break-after: auto; break-inside: auto; page-break-inside: auto; }
-      .pdf-page + .pdf-page { break-before: page; page-break-before: always; }
+      .pdf-section-group, .pdf-page-inner { break-inside: auto; page-break-inside: auto; }
       .pdf-page .tablewrap, .pdf-page .tablewrap.short { max-height: none !important; overflow: visible !important; }
     }
   </style>
@@ -1706,29 +1708,27 @@ function shrinkTablesToFit(root) {
     const avail = wrap.clientWidth, full = table.scrollWidth;
     if (full <= avail) return;
     const scale = avail / full;
-    table.style.transform = `scale(${scale})`;
+    table.style.transform = `scaleX(${scale})`;
     table.style.transformOrigin = 'top left';
-    // scale() doesn't shrink the box the table occupies in the flow, so pin the wrapper to the scaled size —
-    // !important because the print stylesheet resets .tablewrap's overflow/height for tables that DIDN'T need
-    // shrinking (so their full row list isn't clipped to the on-screen scroll height), and would otherwise win
-    // over a plain inline style here and let the unscaled table spill past its visible bounds.
-    wrap.style.setProperty('height', (table.scrollHeight * scale) + 'px', 'important');
+    // Keep the table's natural row height. Only clip horizontal overflow after the width squeeze; scaling both
+    // axes and assigning a derived wrapper height can produce a tall blank grid in the exported page.
     wrap.style.setProperty('overflow', 'hidden', 'important');
   });
 }
 const pdfSectionNames = { 1: '1 · Bucket Mix', 2: '2 · Paid Contribution', 3: '3 · Detailed View', 4: '4 · Comparison' };
 function getPdfPages() {
   const included = state.snapshots.filter(s => ['1', '2', '3', '4'].includes(String(s.section)));
-  return [1, 2, 3, 4].map(n => ({ section: pdfSectionNames[n], snapshots: included.filter(s => String(s.section) === String(n)) })).filter(group => group.snapshots.length);
+  const sections = [1, 2, 3, 4].map(n => ({ section: pdfSectionNames[n], snapshots: included.filter(s => String(s.section) === String(n)) })).filter(group => group.snapshots.length);
+  return sections.length ? [{ sections }] : [];
 }
 function pdfPageMarkup(page) {
-  return `<article class="pdf-page"><header class="pdf-header"><div><h1>Remodel Review</h1>${state.clientName ? `<p>${esc(state.clientName)}</p>` : ''}</div></header><h2 class="pdf-section-title">${esc(page.section)}</h2><div class="pdf-page-content">${page.snapshots.map(snapshot => `<div class="pdf-page-inner">${snapshot.html}</div>`).join('')}</div></article>`;
+  return `<article class="pdf-page"><header class="pdf-header"><div><h1>Remodel Review</h1>${state.clientName ? `<p>${esc(state.clientName)}</p>` : ''}</div></header><div class="pdf-page-content">${page.sections.map(section => `<section class="pdf-section-group"><h2 class="pdf-section-title">${esc(section.section)}</h2>${section.snapshots.map(snapshot => `<div class="pdf-page-inner">${snapshot.html}</div>`).join('')}</section>`).join('')}</div></article>`;
 }
 let pdfPreviewPages = [], pdfPreviewIndex = 0;
 function renderPdfPreviewPage() {
   $('#pdfPreviewPage').innerHTML = pdfPageMarkup(pdfPreviewPages[pdfPreviewIndex]);
   shrinkTablesToFit($('#pdfPreviewPage'));
-  $('#pdfPageCounter').textContent = `Section ${pdfPreviewIndex + 1} of ${pdfPreviewPages.length} · content may continue onto additional PDF pages`;
+  $('#pdfPageCounter').textContent = 'One continuous page · scroll to review all sections';
   $('#pdfPrevBtn').disabled = pdfPreviewIndex === 0;
   $('#pdfNextBtn').disabled = pdfPreviewIndex === pdfPreviewPages.length - 1;
   $('.pdf-preview-stage').scrollTop = 0;
@@ -1756,6 +1756,11 @@ function exportPdf() {
   root.innerHTML = pages.map(pdfPageMarkup).join('');
   root.setAttribute('inert', '');   // keeps this off-screen copy out of tab order / screen readers until it's removed
   shrinkTablesToFit(root);
+  const pageHeight = Math.min(200, Math.max(11, (root.scrollHeight + 48) / 96));
+  let pageStyle = document.getElementById('pdfPageSizeStyle');
+  if (!pageStyle) { pageStyle = document.createElement('style'); pageStyle.id = 'pdfPageSizeStyle'; document.head.appendChild(pageStyle); }
+  pageStyle.textContent = `@page { size: 11in ${pageHeight}in; margin: 5mm; }`;
+  window.addEventListener('afterprint', () => { pageStyle.remove(); }, { once: true });
   window.print();
 }
 $('#exportPdfBtn').addEventListener('click', exportPdf);
