@@ -296,7 +296,7 @@ const state = {
   snapshots: [],
   clientName: '',
   channels: new Map(),                        // normKey -> {name, segs:{prod,remodel}, rev:{prod,remodel}}
-  view: { tab: 'setup', cat: '__all__', out: '__all__', level: 'channel', dsort: { P: { key: 'val', k: null, m: 'rev', dir: -1 }, R: { key: 'val', k: null, m: 'rev', dir: -1 } }, detailN: 0, detailMetric: 'rev', detailMode: 'both', detailOff: {}, detailCatOff: {}, detailDD: {}, detailSpendCat: {}, detailBucketCollapsed: {}, detailChangeFilter: '', topN: 15, paidMode: 'pct', psort: { P: { key: 'rev', dir: -1 }, R: { key: 'rev', dir: -1 } }, paidOff: {}, paidCatOff: {}, paidDD: {}, paidSpendCat: {}, mixOff: {}, mixCatOff: {}, mixDD: {}, mixMode: 'both', mixMetric: 'pct', bucketFilter: 'all', compareMetric: 'rev', compareOff: {}, compareCatOff: {}, compareDD: {}, compareSpendCat: {}, compareBucket: 'all', compareSort: { key: 'deltaPct', dir: -1 } },
+  view: { tab: 'setup', cat: '__all__', out: '__all__', level: 'channel', dsort: { P: { key: 'val', k: null, m: 'rev', dir: -1 }, R: { key: 'val', k: null, m: 'rev', dir: -1 } }, detailN: 0, detailMetric: 'rev', detailMode: 'both', detailOff: {}, detailCatOff: {}, detailDD: {}, detailSpendCat: {}, detailBucketCollapsed: {}, detailChangeFilter: '', topN: 15, paidMode: 'pct', paidSearch: { P: '', R: '' }, psort: { P: { key: 'rev', dir: -1 }, R: { key: 'rev', dir: -1 } }, paidOff: {}, paidCatOff: {}, paidDD: {}, paidSpendCat: {}, mixOff: {}, mixCatOff: {}, mixDD: {}, mixMode: 'both', mixMetric: 'pct', bucketFilter: 'all', compareMetric: 'rev', compareOff: {}, compareCatOff: {}, compareDD: {}, compareSpendCat: {}, compareBucket: 'all', compareSort: { key: 'deltaPct', dir: -1 } },
 };
 /* Restoring saved setup: `files` (aggregated data + column mapping, no raw rows) and `mapBuckets` are only
    present in the saved JSON once they're actually ready, so a stale/missing value never clobbers the fresh
@@ -1237,7 +1237,9 @@ function paidSideView(W) {
   const spendCatPick = v.paidSpendCat[W] ?? COMBINED;
   const spendCat = catItems.some(([c]) => c === spendCatPick) ? spendCatPick : COMBINED;
   const spendCatSelect = `<div><label style="display:block;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">Spend category</label><select data-paid-spend-cat="${W}" style="padding:6px 8px;font-size:12px">${catItems.map(([c, name]) => `<option value="${esc(c)}" ${spendCat === c ? 'selected' : ''}>${esc(name)}</option>`).join('')}</select></div>`;
-  const head = `<h3 style="margin:0 0 10px">${SIDE_NAME[W]}</h3><div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-start">${ddCat}${ddOut}${spendCatSelect}</div>`;
+  const search = v.paidSearch[W] || '';
+  const searchControl = `<div style="min-width:190px"><label>Filter channels</label><input type="text" data-paid-search="${W}" value="${esc(search)}" placeholder="Search channels…" style="padding:6px 8px;font-size:12px"></div>`;
+  const head = `<h3 style="margin:0 0 10px">${SIDE_NAME[W]}</h3><div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-start">${ddCat}${ddOut}${spendCatSelect}${searchControl}</div>`;
   if (!catItems.length) return { head, list: [], totRev: 0, totSpend: 0, catItems, outItems };
 
   const revMap = new Map();
@@ -1265,11 +1267,14 @@ function paidSideView(W) {
   // number always agree — one sort key covers both display modes.
   const { key, dir } = v.psort[W];
   list.sort((a, b) => key === 'name' ? a.name.localeCompare(b.name) * dir : ((a[key] ?? -Infinity) - (b[key] ?? -Infinity)) * dir);
-  return { head, list, totRev, totSpend, catItems, outItems };
+  const filteredList = search ? list.filter(e => norm(e.name).includes(norm(search))) : list;
+  return { head, list: filteredList, totRev, totSpend, catItems, outItems };
 }
 
 function renderPaid() {
   const v = state.view;
+  const focusedSide = document.activeElement?.dataset?.paidSearch || null;
+  const focusPos = focusedSide ? document.activeElement.selectionStart : null;
   const V = { P: paidSideView('P'), R: paidSideView('R') };
   const raw = v.paidMode === 'raw';
   const sp = V.P, sr = V.R, n = Math.max(sp.list.length, sr.list.length), shown = v.topN ? Math.min(v.topN, n) : n;
@@ -1301,6 +1306,14 @@ function renderPaid() {
       </thead><tbody>${body || '<tr><td colspan="8" class="empty">No paid channels. Check bucket assignments in Setup and the checklists above.</td></tr>'}
       <tr class="total">${total(sp.list, sp)}${total(sr.list, sr, 'sepl')}</tr></tbody></table></div></div>`;
   $('#paidMode').addEventListener('click', e => { const b = e.target.closest('button'); if (b) { v.paidMode = b.dataset.v; renderPaid(); } });
+  $('#view').querySelectorAll('[data-paid-search]').forEach(input => input.addEventListener('input', e => {
+    const side = e.target.dataset.paidSearch;
+    v.paidSearch[side] = e.target.value;
+    const pos = e.target.selectionStart;
+    renderPaid();
+    const next = $('#view').querySelector(`[data-paid-search="${side}"]`);
+    next?.focus(); if (next && pos != null) next.setSelectionRange(pos, pos);
+  }));
   $('#topN').addEventListener('change', e => { v.topN = +e.target.value; renderPaid(); });
   $('#view').querySelectorAll('[data-ps]').forEach(h => h.addEventListener('click', () => {
     const side = h.dataset.ps, key = h.dataset.sk, st = v.psort[side];
@@ -1315,6 +1328,10 @@ function renderPaid() {
   wireDD($('#view'), v.paidDD);
   $('#view').querySelectorAll('[data-paid-spend-cat]').forEach(sel => sel.addEventListener('change', e => { v.paidSpendCat[e.target.dataset.paidSpendCat] = e.target.value; renderPaid(); }));
   wireNotes($('#view'));
+  if (focusedSide) {
+    const input = $('#view').querySelector(`[data-paid-search="${focusedSide}"]`);
+    input?.focus(); if (input && focusPos != null) input.setSelectionRange(focusPos, focusPos);
+  }
 }
 
 /* ---------- 3. detailed view ---------- */
