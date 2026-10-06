@@ -1356,6 +1356,16 @@ function processData() {
       return s;
     };
 
+    // Matched-market DMA columns may include a COMSCORE_MARKET label. Only
+    // numeric IDs from those columns participate in pairing.
+    const normMatchedId = v => {
+      const raw = String(v == null ? '' : v).trim();
+      const marketId = raw.match(/^COMSCORE_MARKET:\s*(\d+(?:\.0+)?)(?:\b|$)/i);
+      const id = marketId ? marketId[1] : raw;
+      if (!/^\d+(?:\.0+)?$/.test(id)) return '';
+      return normId(id);
+    };
+
     // -- Build cells lookup. Column names were resolved from whatever headers
     //    the file actually uses (see resolveCellsColumns). Key by BOTH the id
     //    and dma-code columns (normalized) so it matches sales.geo_id whichever
@@ -1382,7 +1392,7 @@ function processData() {
     state.matched.forEach((r, i) => {
       const pairNum = i + 1;
       idCols.forEach(col => {
-        const id = normId(r[col]);
+        const id = normMatchedId(r[col]);
         if (id === '') return;
         if (!pairLookup[id]) pairLookup[id] = new Set();
         pairLookup[id].add(pairNum);
