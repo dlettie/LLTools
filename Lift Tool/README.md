@@ -27,6 +27,9 @@ The tool expects three CSV files:
 | **Cells Mapping** | Maps each DMA to a cell number and type | `DMA ID`, `Cell Number` |
 | **Matched Markets** | Control ↔ treatment DMA pairs | `Control DMA ID` |
 
+Matched-market DMA columns are matched using numeric IDs only. If a value is
+prefixed with `COMSCORE_MARKET:`, the numeric ID after the prefix is used.
+
 You also provide three dates:
 
 - **Experiment start** — the AB (test) period begins here. The 30 days prior are
