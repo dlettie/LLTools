@@ -553,6 +553,7 @@ td.highlight { background: rgba(20,184,166,.05); }
   <div class="tab-item" onclick="switchTab('geo')">Geo Lift</div>
   <div class="tab-item" onclick="switchTab('daily')">Daily Factor</div>
   <div class="tab-item" onclick="switchTab('cumlift')">Lift</div>
+  <div class="tab-item" onclick="switchTab('dailyorders')">Daily Orders</div>
   <div class="tab-item" onclick="switchTab('dataset')">Full Dataset</div>
   <div style="margin-left:auto;display:flex;align-items:center;padding-right:36px;">
     <button onclick="exportExcel()" style="font-family:var(--mono);font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;background:none;border:1px solid var(--accent);color:var(--accent);border-radius:4px;padding:5px 14px;cursor:pointer;transition:all .15s;" onmouseover="this.style.background='rgba(20,184,166,.1)'" onmouseout="this.style.background='none'">⬇ Export Excel</button>
@@ -640,6 +641,15 @@ td.highlight { background: rgba(20,184,166,.05); }
   <div id="tab-summary" class="hidden">
     <div class="section-label"><span class="section-num">03</span> Summary Statistics</div>
     <div id="summary-category-tabs" style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;"></div>
+    <div class="section-label" style="margin-bottom:8px;">Factor Values</div>
+    <div id="summary-factors" class="table-outer" style="margin-bottom:12px;">
+      <div class="table-scroll">
+        <table class="pivot-table">
+          <thead id="summary-factors-head"></thead>
+          <tbody id="summary-factors-body"></tbody>
+        </table>
+      </div>
+    </div>
     <div id="summary-pivot" class="table-outer" style="margin-bottom:12px;">
       <div class="table-scroll">
         <table class="pivot-table">
@@ -649,7 +659,7 @@ td.highlight { background: rgba(20,184,166,.05); }
       </div>
     </div>
     <div id="summary-footnote" style="font-family:var(--mono);font-size:12px;color:var(--muted);margin-bottom:36px;">
-      Factor value = arm orders ÷ baseline orders &nbsp;·&nbsp; baseline AA &amp; AB shown raw (unfactored) &nbsp;·&nbsp; lift = arm AB − factored baseline AB
+      Factors use the AA control/treated split for included pairs &nbsp;·&nbsp; each control row is scaled by its arm's factor for both AA and AB &nbsp;·&nbsp; lift = treated AB − factored control AB
     </div>
 
     <div class="section-label"><span class="section-num">03b</span> Lift by Window — AB vs AC</div>
@@ -667,10 +677,12 @@ td.highlight { background: rgba(20,184,166,.05); }
     </div>
 
     <div class="section-label"><span class="section-num">↓</span> Filter Pairs</div>
+    <div id="pair-filter-outcomes" style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;"></div>
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
       <button onclick="selectAllPairs()" style="font-family:var(--mono);font-size:12px;color:var(--muted);background:none;border:1px solid var(--border2);border-radius:3px;padding:3px 10px;cursor:pointer;">select all</button>
       <button onclick="clearAllPairs()" style="font-family:var(--mono);font-size:12px;color:var(--muted);background:none;border:1px solid var(--border2);border-radius:3px;padding:3px 10px;cursor:pointer;">clear all</button>
     </div>
+    <div id="pair-filter-outcome-label" style="font-family:var(--mono);font-size:12px;color:var(--muted);margin-bottom:8px;"></div>
     <div id="pair-filter-chips" style="display:flex;flex-direction:column;gap:6px;margin-bottom:36px;"></div>
 
     <div class="section-label"><span class="section-num">08</span> Pair Diagnostics</div>
@@ -740,9 +752,50 @@ td.highlight { background: rgba(20,184,166,.05); }
     </div>
   </div>
 
+  <!-- TAB: Daily Orders -->
+  <div id="tab-dailyorders" class="hidden">
+    <div class="section-label"><span class="section-num">07</span> Daily Orders</div>
+    <div id="daily-orders-outcome-tabs" style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;"></div>
+    <div class="table-controls">
+      <span class="tctl-label">Period
+        <select class="tctl-input" id="daily-orders-period" onchange="renderDailyOrders()">
+          <option value="AB">Experiment (AB)</option>
+          <option value="AA">Pre-period (AA)</option>
+          <option value="">AA + AB</option>
+        </select>
+      </span>
+      <span class="tctl-label">Category
+        <select class="tctl-input" id="daily-orders-category" onchange="renderDailyOrders()">
+          <option value="__combined__">All</option>
+        </select>
+      </span>
+    </div>
+    <div class="section-label" style="margin:12px 0 8px;">Factor Values</div>
+    <div id="daily-orders-factors" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px;"></div>
+    <div id="daily-orders-empty" style="font-family:var(--mono);font-size:12px;color:var(--muted);margin-bottom:8px;display:none;"></div>
+    <div id="daily-orders-wrap" class="table-outer" style="margin-bottom:12px;">
+      <div class="table-scroll">
+        <table class="pivot-table">
+          <thead id="daily-orders-head"></thead>
+          <tbody id="daily-orders-body"></tbody>
+        </table>
+      </div>
+    </div>
+    <div id="daily-orders-note" style="font-family:var(--mono);font-size:12px;color:var(--muted);margin-bottom:16px;">
+      Daily control and treated orders by category · adjusted control = control orders × the selected outcome's AA factor · pair exclusions follow the outcome-specific pair filter
+    </div>
+    <div class="section-label" style="margin:12px 0 8px;">Geo Exclusions</div>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+      <button onclick="selectAllDailyOrderPairs()" style="font-family:var(--mono);font-size:12px;color:var(--muted);background:none;border:1px solid var(--border2);border-radius:3px;padding:3px 10px;cursor:pointer;">include all</button>
+      <button onclick="clearAllDailyOrderPairs()" style="font-family:var(--mono);font-size:12px;color:var(--muted);background:none;border:1px solid var(--border2);border-radius:3px;padding:3px 10px;cursor:pointer;">exclude all</button>
+      <span id="daily-orders-exclusion-label" style="font-family:var(--mono);font-size:12px;color:var(--muted);"></span>
+    </div>
+    <div id="daily-orders-pair-chips" style="display:flex;flex-direction:column;gap:6px;margin-bottom:36px;"></div>
+  </div>
+
   <!-- TAB: Full Dataset -->
   <div id="tab-dataset" class="hidden">
-    <div class="section-label"><span class="section-num">07</span> Full Mapped Dataset</div>
+    <div class="section-label"><span class="section-num">08</span> Full Mapped Dataset</div>
     <div class="period-legend">
       <span class="plabel plabel-AA">AA — Pre-period</span>
       <span class="plabel plabel-AB">AB — Experiment</span>
@@ -1144,7 +1197,7 @@ function checkReady() {
 }
 
 // ── Tab navigation ────────────────────────────────────────────────────────────
-const ALL_TABS = ['setup','summary','geo','daily','cumlift','dataset'];
+const ALL_TABS = ['setup','summary','geo','daily','cumlift','dailyorders','dataset'];
 
 function switchTab(name) {
   ALL_TABS.forEach(t => {
@@ -1163,74 +1216,306 @@ function switchTab(name) {
 }
 
 // ── Pair filter ───────────────────────────────────────────────────────────────
-let excludedPairs = new Set();
+let excludedPairsByOutcome = new Map();
+let pairOptionsByOutcome = new Map();
+let activePairOutcome = null;
 
 function applyPairExclusions(rows) {
-  if (!excludedPairs.size) return rows;
-  return rows.filter(r => !excludedPairs.has(String(r.pair)));
+  return rows.filter(r => {
+    const outcome = r.target_variable_nm || '(unknown)';
+    return !excludedPairsByOutcome.get(outcome)?.has(String(r.pair));
+  });
 }
 
 function rerenderAnalysisViews() {
   const allRows = window._geoRows || [];
   const scopedRows = applyPairExclusions(allRows);
+  renderPairFilterChips();
   renderAASummary(allRows);
   renderGeoTable(scopedRows);
   renderDailyFactor(scopedRows);
   renderCumLift(scopedRows);
 }
 
-function buildPairFilter(rows) {
-  // Build pair -> { [cell_type]: DMA list } lookup
-  const pairDMAs = {};
-  rows.forEach(r => {
-    if (!r.pair) return;
-    if (!isAnalyzedType(r.cell_type)) return;
-    const p = String(r.pair);
-    if (!pairDMAs[p]) pairDMAs[p] = {};
-    if (!pairDMAs[p][r.cell_type]) pairDMAs[p][r.cell_type] = new Set();
-    pairDMAs[p][r.cell_type].add(r.DMA || r.geo_id || '');
-  });
+let dailyOrdersOutcome = null;
 
-  const pairs = Object.keys(pairDMAs).sort((a, b) => parseInt(a) - parseInt(b));
-  excludedPairs = new Set();
+function selectDailyOrdersOutcome(button) {
+  dailyOrdersOutcome = button.dataset.outcome;
+  renderDailyOrders();
+}
+
+function renderDailyOrdersFactorControls(arms, factors) {
+  document.getElementById('daily-orders-factors').innerHTML = arms.map((arm, index) => {
+    const key = factorKey(dailyOrdersOutcome, arm);
+    const factor = factors[index];
+    if (factor === null || factor === undefined) {
+      return `<div class="pair-chip active" style="cursor:default;opacity:1;">${escHtml(arm)}: no AA factor available</div>`;
+    }
+    const isCustom = customFactors[key] !== undefined;
+    const keyEsc = key.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    const color = factor >= 1 ? 'green' : 'warn';
+    return `<div class="pair-chip active" style="cursor:default;opacity:1;width:auto;max-width:none;">
+      <span style="margin-right:6px;">${escHtml(arm)}</span>
+      <input type="text" inputmode="decimal" value="${factor.toFixed(4)}"
+        aria-label="${escHtml(arm)} factor value"
+        onchange="handleFactorInput('${keyEsc}', this.value)"
+        onblur="commitFactorInput('${keyEsc}')"
+        onkeydown="if(event.key==='Enter')commitFactorInput('${keyEsc}')"
+        style="width:76px;background:var(--surface);border:1px solid ${isCustom ? 'var(--warn)' : 'var(--border2)'};border-radius:4px;color:var(--${color});font-family:var(--mono);font-size:13px;font-weight:600;padding:3px 6px;outline:none;text-align:center;"/>
+      <div style="display:flex;flex-direction:column;gap:1px;margin-left:6px;">
+        <button onclick="adjustFactor('${keyEsc}', 0.01)" title="Increase factor" style="font-size:.6rem;line-height:1;padding:1px 4px;background:var(--surface);border:1px solid var(--border2);border-radius:2px;color:var(--muted);cursor:pointer;">▲</button>
+        <button onclick="adjustFactor('${keyEsc}', -0.01)" title="Decrease factor" style="font-size:.6rem;line-height:1;padding:1px 4px;background:var(--surface);border:1px solid var(--border2);border-radius:2px;color:var(--muted);cursor:pointer;">▼</button>
+      </div>
+      ${isCustom ? `<button onclick="resetFactor('${keyEsc}')" title="Reset to computed" style="font-family:var(--mono);font-size:.6rem;padding:2px 5px;margin-left:6px;background:none;border:1px solid var(--border2);border-radius:3px;color:var(--muted);cursor:pointer;">↺</button>` : ''}
+    </div>`;
+  }).join('');
+}
+
+function renderDailyOrdersGeoExclusions() {
+  const pairDMAs = pairOptionsByOutcome.get(dailyOrdersOutcome) || new Map();
+  const excludedPairs = excludedPairsByOutcome.get(dailyOrdersOutcome) || new Set();
+  const label = document.getElementById('daily-orders-exclusion-label');
+  const chips = document.getElementById('daily-orders-pair-chips');
+  if (label) {
+    label.textContent = dailyOrdersOutcome
+      ? `Pair exclusions for ${dailyOrdersOutcome}`
+      : 'No outcomes available';
+  }
+  if (!chips) return;
 
   const bType = baselineType();
   const arms = armTypes();
+  const pairs = [...pairDMAs.keys()].sort((a, b) => parseInt(a, 10) - parseInt(b, 10));
+  chips.innerHTML = pairs.length ? pairs.map(pair => {
+    const pairData = pairDMAs.get(pair);
+    const baseDMA = pairData[bType] ? summarizeDMAList(pairData[bType]) : '—';
+    const armParts = arms.map(arm => `<span style="color:var(--muted);margin:0 4px;">vs</span><span style="color:#14b8a6">${escHtml(arm)}: ${pairData[arm] ? escHtml(summarizeDMAList(pairData[arm])) : '—'}</span>`).join('');
+    return `<button class="pair-chip${excludedPairs.has(pair) ? '' : ' active'}" data-pair="${escHtml(pair)}" onclick="toggleDailyOrdersPair(this)">
+      <span style="color:var(--muted);margin-right:5px;">#${escHtml(pair)}</span>
+      <span style="color:#8b5cf6">${escHtml(bType)}: ${escHtml(baseDMA)}</span>
+      ${armParts}
+    </button>`;
+  }).join('') : '<span style="font-family:var(--mono);font-size:12px;color:var(--muted);">No matched geos available for this outcome.</span>';
+}
+
+function toggleDailyOrdersPair(button) {
+  const excludedPairs = excludedPairsByOutcome.get(dailyOrdersOutcome);
+  const pair = button.dataset.pair;
+  if (!excludedPairs) return;
+  if (excludedPairs.has(pair)) excludedPairs.delete(pair);
+  else excludedPairs.add(pair);
+  clearOutcomeFactorOverrides(dailyOrdersOutcome);
+  rerenderAnalysisViews();
+}
+
+function setDailyOrdersPairsExcluded(exclude) {
+  const excludedPairs = excludedPairsByOutcome.get(dailyOrdersOutcome);
+  if (!excludedPairs) return;
+  excludedPairs.clear();
+  if (exclude) {
+    (pairOptionsByOutcome.get(dailyOrdersOutcome) || new Map())
+      .forEach((_, pair) => excludedPairs.add(pair));
+  }
+  clearOutcomeFactorOverrides(dailyOrdersOutcome);
+  rerenderAnalysisViews();
+}
+
+function selectAllDailyOrderPairs() { setDailyOrdersPairsExcluded(false); }
+function clearAllDailyOrderPairs() { setDailyOrdersPairsExcluded(true); }
+
+function renderDailyOrders(rows = window._geoRows || []) {
+  const outcomes = [...new Set(rows.map(r => r.target_variable_nm || '(unknown)'))].sort();
+  if (!outcomes.includes(dailyOrdersOutcome)) dailyOrdersOutcome = outcomes[0] || null;
+
+  document.getElementById('daily-orders-outcome-tabs').innerHTML = outcomes
+    .map(outcome => `<button class="seg-tab${outcome === dailyOrdersOutcome ? ' active' : ''}" data-outcome="${escHtml(outcome)}" onclick="selectDailyOrdersOutcome(this)">${escHtml(outcome)}</button>`)
+    .join('');
+
+  const outcomeRows = rows.filter(r => (r.target_variable_nm || '(unknown)') === dailyOrdersOutcome);
+  const bType = baselineType();
+  const arms = armTypes();
+  const factors = arms.map(arm => {
+    const key = factorKey(dailyOrdersOutcome, arm);
+    return customFactors[key] !== undefined ? customFactors[key] : window._computedFactors?.[key];
+  });
+  renderDailyOrdersFactorControls(arms, factors);
+  renderDailyOrdersGeoExclusions();
+
+  const categorySelect = document.getElementById('daily-orders-category');
+  const categories = [...new Set(outcomeRows.map(r => r.category_nm || '(unknown)'))].sort();
+  const selectedCategory = categorySelect.value;
+  categorySelect.innerHTML = '<option value="__combined__">All</option>' +
+    categories.map(category => `<option value="${escHtml(category)}">${escHtml(category)}</option>`).join('');
+  categorySelect.value = categories.includes(selectedCategory) ? selectedCategory : '__combined__';
+
+  const period = document.getElementById('daily-orders-period').value;
+  const filtered = applyPairExclusions(outcomeRows).filter(r =>
+    (period ? r.period === period : r.period === 'AA' || r.period === 'AB') &&
+    (categorySelect.value === '__combined__' || (r.category_nm || '(unknown)') === categorySelect.value)
+  );
+  const empty = document.getElementById('daily-orders-empty');
+  const table = document.getElementById('daily-orders-wrap');
+  if (!filtered.length) {
+    document.getElementById('daily-orders-head').innerHTML = '';
+    document.getElementById('daily-orders-body').innerHTML = '';
+    empty.textContent = 'No daily orders match the selected outcome, period, category, and pair filters.';
+    empty.style.display = '';
+    table.style.display = 'none';
+    return;
+  }
+  empty.style.display = 'none';
+  table.style.display = '';
+
+  const displayCategories = categorySelect.value === '__combined__'
+    ? categories
+    : [categorySelect.value];
+  const factorLabel = factor => factor === null || factor === undefined ? '—' : factor.toFixed(4);
+
+  document.getElementById('daily-orders-head').innerHTML = `
+    <tr>
+      <th rowspan="3" style="border-right:1px solid var(--border);vertical-align:bottom;">Period</th>
+      <th rowspan="3" style="border-right:1px solid var(--border);vertical-align:bottom;">Day</th>
+      <th colspan="${displayCategories.length}" style="text-align:center;">${escHtml(bType)}</th>
+      ${arms.map(arm => `<th colspan="${displayCategories.length}" style="text-align:center;">${escHtml(arm)}</th>`).join('')}
+      ${arms.map(arm => `<th colspan="${displayCategories.length}" style="text-align:center;border-left:2px solid var(--accent);">Adjusted ${escHtml(bType)} (${escHtml(arm)})</th>`).join('')}
+    </tr>
+    <tr>
+      ${[bType, ...arms].map(() => displayCategories.map(category =>
+        `<th rowspan="2" style="text-align:center;">${escHtml(category)}</th>`
+      ).join('')).join('')}
+      ${arms.map(() => displayCategories.map(category =>
+        `<th style="text-align:center;">${escHtml(category)}</th>`
+      ).join('')).join('')}
+    </tr>
+    <tr>
+      ${arms.map((_, armIndex) => displayCategories.map(() =>
+        `<th class="th-factor" style="text-align:center;border-bottom:2px solid var(--border2);">FV ${factorLabel(factors[armIndex])}</th>`
+      ).join('')).join('')}
+    </tr>`;
+
+  const totals = new Map();
+  filtered.forEach(r => {
+    if (r.period !== 'AA' && r.period !== 'AB') return;
+    const day = String(r.day || '');
+    const category = r.category_nm || '(unknown)';
+    const key = `${r.period}||${day}||${r.cell_type}||${category}`;
+    totals.set(key, (totals.get(key) || 0) + toNum(r.orders));
+  });
+  const getTotal = (period, day, cellType, category) => totals.get(`${period}||${day}||${cellType}||${category}`) || 0;
+  const dayPeriods = [...new Map(filtered
+    .filter(r => r.period === 'AA' || r.period === 'AB')
+    .map(r => [`${r.period}||${r.day}`, { period: r.period, day: String(r.day || '') }])).values()]
+    .sort((a, b) => {
+    const periodOrder = { AA: 0, AB: 1 };
+    if (a.period !== b.period) return periodOrder[a.period] - periodOrder[b.period];
+    const dateA = parseDateLoose(a.day), dateB = parseDateLoose(b.day);
+    return dateA && dateB ? dateA - dateB : a.day.localeCompare(b.day);
+  });
+  const formatOrders = value => value.toLocaleString(undefined, { maximumFractionDigits: 0 });
+
+  document.getElementById('daily-orders-body').innerHTML = dayPeriods.map(({ period: dayPeriod, day }) => `
+    <tr>
+      <td><span class="tag tag-${dayPeriod}">${dayPeriod}</span></td>
+      <td>${escHtml(parseDateLoose(day)?.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: '2-digit' }) || day)}</td>
+      ${[bType, ...arms].map(cellType => displayCategories.map(category =>
+        `<td style="text-align:right;">${formatOrders(getTotal(dayPeriod, day, cellType, category))}</td>`
+      ).join('')).join('')}
+      ${arms.map((arm, armIndex) => displayCategories.map(category => {
+        const factor = factors[armIndex];
+        return `<td style="text-align:right;border-left:2px solid var(--accent);">${factor === null || factor === undefined ? '—' : formatOrders(getTotal(dayPeriod, day, bType, category) * factor)}</td>`;
+      }).join('')).join('')}
+    </tr>`).join('');
+}
+
+function buildPairFilter(rows) {
+  // Build outcome -> pair -> { [cell_type]: DMA list } lookup
+  pairOptionsByOutcome = new Map();
+  rows.forEach(r => {
+    if (!r.pair) return;
+    if (!isAnalyzedType(r.cell_type)) return;
+    const outcome = r.target_variable_nm || '(unknown)';
+    const p = String(r.pair);
+    if (!pairOptionsByOutcome.has(outcome)) pairOptionsByOutcome.set(outcome, new Map());
+    const pairDMAs = pairOptionsByOutcome.get(outcome);
+    if (!pairDMAs.has(p)) pairDMAs.set(p, {});
+    const cells = pairDMAs.get(p);
+    if (!cells[r.cell_type]) cells[r.cell_type] = new Set();
+    cells[r.cell_type].add(r.DMA || r.geo_id || '');
+  });
+
+  const outcomes = [...new Set(rows.map(r => r.target_variable_nm || '(unknown)'))].sort();
+  excludedPairsByOutcome = new Map(outcomes.map(outcome => [outcome, new Set()]));
+  activePairOutcome = outcomes[0] || null;
+
+  const tabs = document.getElementById('pair-filter-outcomes');
+  if (tabs) {
+    tabs.innerHTML = outcomes.map(outcome => `<button class="seg-tab${outcome === activePairOutcome ? ' active' : ''}" data-outcome="${escHtml(outcome)}" onclick="selectPairOutcome(this)">${escHtml(outcome)}</button>`).join('');
+  }
+  renderPairFilterChips();
+}
+
+function renderPairFilterChips() {
+  const pairDMAs = pairOptionsByOutcome.get(activePairOutcome) || new Map();
+  const pairs = [...pairDMAs.keys()].sort((a, b) => parseInt(a, 10) - parseInt(b, 10));
+  const excludedPairs = excludedPairsByOutcome.get(activePairOutcome) || new Set();
+  const bType = baselineType();
+  const arms = armTypes();
+  const label = document.getElementById('pair-filter-outcome-label');
+  if (label) label.textContent = activePairOutcome ? `Pair exclusions for ${activePairOutcome}` : 'No outcomes available';
 
   document.getElementById('pair-filter-chips').innerHTML = pairs.map(p => {
-    const baseDMA = pairDMAs[p][bType] ? summarizeDMAList(pairDMAs[p][bType]) : '—';
-    const armParts = arms.map(a => `<span style="color:var(--muted);margin:0 4px;">vs</span><span style="color:#14b8a6">${a}: ${pairDMAs[p][a] ? summarizeDMAList(pairDMAs[p][a]) : '—'}</span>`).join('');
-    return `<button class="pair-chip active" id="chip-${p}" onclick="togglePair('${p}')">
-      <span style="color:var(--muted);margin-right:5px;">#${p}</span>
-      <span style="color:#8b5cf6">${bType}: ${baseDMA}</span>
+    const pairData = pairDMAs.get(p);
+    const baseDMA = pairData[bType] ? summarizeDMAList(pairData[bType]) : '—';
+    const armParts = arms.map(a => `<span style="color:var(--muted);margin:0 4px;">vs</span><span style="color:#14b8a6">${escHtml(a)}: ${pairData[a] ? escHtml(summarizeDMAList(pairData[a])) : '—'}</span>`).join('');
+    return `<button class="pair-chip${excludedPairs.has(p) ? '' : ' active'}" data-pair="${escHtml(p)}" onclick="togglePair(this)">
+      <span style="color:var(--muted);margin-right:5px;">#${escHtml(p)}</span>
+      <span style="color:#8b5cf6">${escHtml(bType)}: ${escHtml(baseDMA)}</span>
       ${armParts}
     </button>`;
   }).join('');
 }
 
-function togglePair(p) {
-  const chip = document.getElementById('chip-' + p);
-  if (excludedPairs.has(p)) {
-    excludedPairs.delete(p);
-    chip.classList.add('active');
+function selectPairOutcome(button) {
+  activePairOutcome = button.dataset.outcome;
+  document.querySelectorAll('#pair-filter-outcomes .seg-tab').forEach(tab => tab.classList.toggle('active', tab === button));
+  renderPairFilterChips();
+}
+
+function clearOutcomeFactorOverrides(outcome) {
+  armTypes().forEach(arm => delete customFactors[factorKey(outcome, arm)]);
+}
+
+function togglePair(button) {
+  const pair = button.dataset.pair;
+  const excludedPairs = excludedPairsByOutcome.get(activePairOutcome);
+  if (!excludedPairs) return;
+  if (excludedPairs.has(pair)) {
+    excludedPairs.delete(pair);
+    button.classList.add('active');
   } else {
-    excludedPairs.add(p);
-    chip.classList.remove('active');
+    excludedPairs.add(pair);
+    button.classList.remove('active');
   }
+  clearOutcomeFactorOverrides(activePairOutcome);
   rerenderAnalysisViews();
 }
 
 function selectAllPairs() {
+  const excludedPairs = excludedPairsByOutcome.get(activePairOutcome);
+  if (!excludedPairs) return;
   excludedPairs.clear();
-  document.querySelectorAll('.pair-chip').forEach(c => c.classList.add('active'));
+  renderPairFilterChips();
+  clearOutcomeFactorOverrides(activePairOutcome);
   rerenderAnalysisViews();
 }
 
 function clearAllPairs() {
-  document.querySelectorAll('.pair-chip').forEach(c => {
-    excludedPairs.add(c.id.replace('chip-', ''));
-    c.classList.remove('active');
-  });
+  const excludedPairs = excludedPairsByOutcome.get(activePairOutcome);
+  if (!excludedPairs) return;
+  excludedPairs.clear();
+  (pairOptionsByOutcome.get(activePairOutcome) || new Map()).forEach((_, pair) => excludedPairs.add(pair));
+  renderPairFilterChips();
+  clearOutcomeFactorOverrides(activePairOutcome);
   rerenderAnalysisViews();
 }
 
@@ -1663,17 +1948,24 @@ function renderAASummary(rows) {
     ? rows
     : rows.filter(r => (r.category_nm || '(unknown)') === summaryActiveCategory);
 
-  // Filter out excluded pairs
-  const filtered = excludedPairs.size > 0
-    ? catRows.filter(r => !excludedPairs.has(String(r.pair)))
-    : catRows;
+  // Factors use all categories for each outcome; summary totals use the selected category.
+  const filtered = applyPairExclusions(catRows);
+  const factorRows = applyPairExclusions(rows);
 
-  // Get all unique segments dynamically
-  const segments = [...new Set(filtered.map(r => r.target_variable_nm || '(unknown)'))].sort();
+  const segments = [...new Set(catRows.map(r => r.target_variable_nm || '(unknown)'))].sort();
   const bType = baselineType();
   const arms  = armTypes();
 
-  // Aggregate: for each segment × cell_type × period, sum orders
+  // Aggregate the included AA split for factors and the included AA/AB values for the summary.
+  const factorAgg = {};
+  factorRows.forEach(r => {
+    if (r.period !== 'AA') return;
+    const ct = r.cell_type || 'unknown';
+    if (!isAnalyzedType(ct)) return;
+    const seg = r.target_variable_nm || '(unknown)';
+    const key = `${seg}||${ct}`;
+    factorAgg[key] = (factorAgg[key] || 0) + toNum(r.orders);
+  });
   const agg = {};
   filtered.forEach(r => {
     if (r.period !== 'AA' && r.period !== 'AB') return;
@@ -1686,20 +1978,51 @@ function renderAASummary(rows) {
   });
 
   const get = (seg, ct, period) => agg[`${seg}||${ct}||${period}`] || 0;
+  const getFactorAA = (seg, ct) => factorAgg[`${seg}||${ct}`] || 0;
   const fmt  = n => (n === null || n === undefined || n === 0) ? '—' : n.toLocaleString(undefined, {maximumFractionDigits: 0});
 
   // Store computed factors for reset reference: one per (segment, arm)
   if (!window._computedFactors) window._computedFactors = {};
   segments.forEach(seg => {
-    const baseAA = get(seg, bType, 'AA');
+    const baseAA = getFactorAA(seg, bType);
     arms.forEach(arm => {
-      const armAA = get(seg, arm, 'AA');
+      const armAA = getFactorAA(seg, arm);
       window._computedFactors[factorKey(seg, arm)] = baseAA > 0 ? armAA / baseAA : null;
     });
   });
 
-  // Build header: blank cell + per-segment group + Total
-  const segColspan = 5;
+  const factorHead = `<tr>
+    ${segments.map(seg => `<th colspan="${arms.length}" style="text-align:center;border-right:2px solid var(--border2);">${seg}</th>`).join('')}
+  </tr>`;
+  const factorCells = segments.map(seg => arms.map(arm => {
+    const key = factorKey(seg, arm);
+    const computedFactor = window._computedFactors[key];
+    const factor = customFactors[key] !== undefined ? customFactors[key] : computedFactor;
+    if (factor === null || factor === undefined) return '<td class="td-factor null-cell">—</td>';
+
+    const isCustom = customFactors[key] !== undefined;
+    const fClass = factor >= 1 ? 'green' : 'warn';
+    const keyEsc = key.replace(/'/g, "\\'");
+    return `<td class="td-factor" style="min-width:160px;">
+      <div style="display:flex;align-items:center;justify-content:center;gap:6px;">
+        <input type="text" inputmode="decimal" value="${factor.toFixed(4)}"
+          onchange="handleFactorInput('${keyEsc}', this.value)"
+          onblur="commitFactorInput('${keyEsc}')"
+          onkeydown="if(event.key==='Enter')commitFactorInput('${keyEsc}')"
+          style="width:72px;background:var(--surface);border:1px solid ${isCustom ? 'var(--warn)' : 'var(--border2)'};border-radius:4px;color:var(--${fClass});font-family:var(--mono);font-size:13px;font-weight:600;padding:3px 6px;outline:none;text-align:center;"/>
+        <div style="display:flex;flex-direction:column;gap:1px;">
+          <button onclick="adjustFactor('${keyEsc}', 0.01)" title="Increase factor" style="font-size:.6rem;line-height:1;padding:1px 4px;background:var(--surface);border:1px solid var(--border2);border-radius:2px;color:var(--muted);cursor:pointer;">▲</button>
+          <button onclick="adjustFactor('${keyEsc}', -0.01)" title="Decrease factor" style="font-size:.6rem;line-height:1;padding:1px 4px;background:var(--surface);border:1px solid var(--border2);border-radius:2px;color:var(--muted);cursor:pointer;">▼</button>
+        </div>
+        ${isCustom ? `<button onclick="resetFactor('${keyEsc}')" title="Reset to computed" style="font-family:var(--mono);font-size:.6rem;padding:2px 5px;background:none;border:1px solid var(--border2);border-radius:3px;color:var(--muted);cursor:pointer;">↺</button>` : ''}
+      </div>
+    </td>`;
+  }).join('')).join('');
+  document.getElementById('summary-factors-head').innerHTML = factorHead;
+  document.getElementById('summary-factors-body').innerHTML = `<tr>${factorCells}</tr>`;
+
+  // Build statistics header: label column + per-segment group + Total
+  const segColspan = 4;
   const headRow1 = `<tr>
     <th rowspan="2" style="border-right:1px solid var(--border);vertical-align:bottom;"> </th>
     ${segments.map((seg, i) => {
@@ -1713,7 +2036,6 @@ function renderAASummary(rows) {
       return `
         <th>AA</th>
         <th>AB</th>
-        <th class="th-factor">Factor Value</th>
         <th class="th-factor">Lift</th>
         <th class="th-factor" style="border-right:2px solid var(--border2)">Lift %</th>
       `;
@@ -1726,92 +2048,64 @@ function renderAASummary(rows) {
 
   document.getElementById('pivot-head').innerHTML = headRow1 + headRow2;
 
-  // Build rows: baseline first, then each arm
-  const cellTypes = [bType, ...arms];
-  document.getElementById('pivot-body').innerHTML = cellTypes.map(ct => {
-    const tagClass = tagClassFor(ct);
-    const isArm = ct !== bType;
-
-    // Per-segment cells
-    const cells = segments.map((seg, i) => {
-      const rawAA = get(seg, ct, 'AA');
-      const rawAB = get(seg, ct, 'AB');
-
-      let factorCell = `<td class="td-factor">—</td>`;
-      let liftCell   = `<td class="td-factor">—</td>`;
-      let liftPctCell= `<td class="td-factor null-cell" style="border-right:2px solid var(--border2)">—</td>`;
-
-      if (isArm) {
-        const key = factorKey(seg, ct);
-        const computedFactor = window._computedFactors[key];
-        const factor  = customFactors[key] !== undefined ? customFactors[key] : computedFactor;
-        const isCustom = customFactors[key] !== undefined;
-        const baseAB  = get(seg, bType, 'AB');
-        const factoredBaseAB = (factor !== null && factor !== undefined) ? baseAB * factor : null;
-        const lift    = factoredBaseAB !== null ? rawAB - factoredBaseAB : null;
-        const liftPct = factoredBaseAB !== null && factoredBaseAB > 0 ? (lift / factoredBaseAB) * 100 : null;
-        const liftColor = lift !== null ? (lift >= 0 ? 'green' : 'warn') : '';
-
-        const fVal   = (factor !== null && factor !== undefined) ? factor : null;
-        const fDisp  = fVal !== null ? fVal.toFixed(4) : '—';
-        const fClass = fVal !== null ? (fVal >= 1 ? 'green' : 'warn') : '';
-        const keyEsc = key.replace(/'/g, "\\'");
-        factorCell = `<td class="td-factor" style="min-width:160px;">
-          ${fVal !== null ? `
-            <div style="display:flex;align-items:center;gap:6px;">
-              <input type="text" inputmode="decimal" value="${fDisp}"
-                onchange="handleFactorInput('${keyEsc}', this.value)"
-                onblur="commitFactorInput('${keyEsc}')"
-                onkeydown="if(event.key==='Enter')commitFactorInput('${keyEsc}')"
-                style="width:72px;background:var(--surface);border:1px solid ${isCustom ? 'var(--warn)' : 'var(--border2)'};border-radius:4px;color:var(--${fClass || 'text'});font-family:var(--mono);font-size:13px;font-weight:600;padding:3px 6px;outline:none;text-align:center;"/>
-              <div style="display:flex;flex-direction:column;gap:1px;">
-                <button onclick="adjustFactor('${keyEsc}', 0.01)"  style="font-size:.6rem;line-height:1;padding:1px 4px;background:var(--surface);border:1px solid var(--border2);border-radius:2px;color:var(--muted);cursor:pointer;">▲</button>
-                <button onclick="adjustFactor('${keyEsc}', -0.01)" style="font-size:.6rem;line-height:1;padding:1px 4px;background:var(--surface);border:1px solid var(--border2);border-radius:2px;color:var(--muted);cursor:pointer;">▼</button>
-              </div>
-              ${isCustom ? `<button onclick="resetFactor('${keyEsc}')" title="Reset to computed" style="font-family:var(--mono);font-size:.6rem;padding:2px 5px;background:none;border:1px solid var(--border2);border-radius:3px;color:var(--muted);cursor:pointer;">↺</button>` : ''}
-            </div>` : '—'}
-        </td>`;
-        liftCell    = `<td class="td-factor">${lift !== null ? `<span class="stat-val ${liftColor}" style="font-size:.95rem">${lift >= 0 ? '+' : ''}${fmt(lift)}</span>` : '—'}</td>`;
-        liftPctCell = `<td class="td-factor" style="border-right:2px solid var(--border2)">${liftPct !== null ? `<span class="stat-val ${liftColor}" style="font-size:.95rem">${liftPct >= 0 ? '+' : ''}${liftPct.toFixed(2)}%</span>` : '—'}</td>`;
-      }
-
-      return `<td>${fmt(rawAA)}</td><td>${fmt(rawAB)}</td>${factorCell}${liftCell}${liftPctCell}`;
+  // Each arm gets its own adjusted-control row because factors may differ by arm.
+  const summaryRows = arms.flatMap(arm => {
+    const armCells = segments.map(seg => {
+      const key = factorKey(seg, arm);
+      const factor = customFactors[key] !== undefined ? customFactors[key] : window._computedFactors[key];
+      const adjustedAA = factor !== null && factor !== undefined ? get(seg, bType, 'AA') * factor : null;
+      const adjustedAB = factor !== null && factor !== undefined ? get(seg, bType, 'AB') * factor : null;
+      return { factor, adjustedAA, adjustedAB, treatedAA: get(seg, arm, 'AA'), treatedAB: get(seg, arm, 'AB') };
+    });
+    const factorsAvailable = armCells.every(c => c.factor !== null && c.factor !== undefined);
+    const totalControlAA = factorsAvailable ? armCells.reduce((sum, c) => sum + c.adjustedAA, 0) : null;
+    const totalControlAB = factorsAvailable ? armCells.reduce((sum, c) => sum + c.adjustedAB, 0) : null;
+    const totalTreatedAA = armCells.reduce((sum, c) => sum + c.treatedAA, 0);
+    const totalTreatedAB = armCells.reduce((sum, c) => sum + c.treatedAB, 0);
+    const totalLift = totalControlAB !== null ? totalTreatedAB - totalControlAB : null;
+    const totalLiftPct = totalControlAB > 0 ? (totalLift / totalControlAB) * 100 : null;
+    const totalLiftColor = totalLift !== null ? (totalLift >= 0 ? 'green' : 'warn') : '';
+    const controlCells = armCells.map(c => `
+      <td>${c.adjustedAA !== null ? fmt(c.adjustedAA) : '—'}</td>
+      <td>${c.adjustedAB !== null ? fmt(c.adjustedAB) : '—'}</td>
+      <td class="td-factor null-cell">—</td>
+      <td class="td-factor null-cell" style="border-right:2px solid var(--border2)">—</td>
+    `).join('');
+    const treatedCells = armCells.map(c => {
+      const lift = c.adjustedAB !== null ? c.treatedAB - c.adjustedAB : null;
+      const liftPct = c.adjustedAB > 0 ? (lift / c.adjustedAB) * 100 : null;
+      const liftColor = lift !== null ? (lift >= 0 ? 'green' : 'warn') : '';
+      return `
+        <td>${fmt(c.treatedAA)}</td>
+        <td>${fmt(c.treatedAB)}</td>
+        <td class="td-factor">${lift !== null ? `<span class="stat-val ${liftColor}" style="font-size:.95rem">${lift >= 0 ? '+' : ''}${fmt(lift)}</span>` : '—'}</td>
+        <td class="td-factor" style="border-right:2px solid var(--border2)">${liftPct !== null ? `<span class="stat-val ${liftColor}" style="font-size:.95rem">${liftPct >= 0 ? '+' : ''}${liftPct.toFixed(2)}%</span>` : '—'}</td>
+      `;
     }).join('');
-
-    // Total cells: sum across all segments
-    const totalRawAA = segments.reduce((s, seg) => s + get(seg, ct, 'AA'), 0);
-    const totalRawAB = segments.reduce((s, seg) => s + get(seg, ct, 'AB'), 0);
-    let totalLift = null, totalLiftPct = null;
-
-    if (isArm) {
-      const totalFactoredBaseAB = segments.reduce((s, seg) => {
-        const key = factorKey(seg, ct);
-        const f = customFactors[key] !== undefined ? customFactors[key] : window._computedFactors[key];
-        return s + (f !== null && f !== undefined ? get(seg, bType, 'AB') * f : 0);
-      }, 0);
-      totalLift    = totalFactoredBaseAB > 0 ? totalRawAB - totalFactoredBaseAB : null;
-      totalLiftPct = totalLift !== null && totalFactoredBaseAB > 0 ? (totalLift / totalFactoredBaseAB) * 100 : null;
-    }
-
-    const tlColor = totalLift !== null ? (totalLift >= 0 ? 'green' : 'warn') : '';
-    const totalCells = isArm
-      ? `<td style="border-left:2px solid var(--accent);background:rgba(20,184,166,.04)">${fmt(totalRawAA)}</td>
-         <td style="background:rgba(20,184,166,.04)">${fmt(totalRawAB)}</td>
-         <td style="background:rgba(20,184,166,.04)">${totalLift !== null ? `<span class="stat-val ${tlColor}" style="font-size:.95rem">${totalLift >= 0 ? '+' : ''}${fmt(totalLift)}</span>` : '—'}</td>
-         <td style="background:rgba(20,184,166,.04);border-right:none">${totalLiftPct !== null ? `<span class="stat-val ${tlColor}" style="font-size:.95rem">${totalLiftPct >= 0 ? '+' : ''}${totalLiftPct.toFixed(2)}%</span>` : '—'}</td>`
-      : `<td style="border-left:2px solid var(--accent);background:rgba(20,184,166,.04)">${fmt(totalRawAA)}</td>
-         <td style="background:rgba(20,184,166,.04)">${fmt(totalRawAB)}</td>
-         <td class="null-cell" style="background:rgba(20,184,166,.04)">—</td>
-         <td class="null-cell" style="background:rgba(20,184,166,.04);border-right:none">—</td>`;
-
-    return `<tr>
-      <td style="border-right:1px solid var(--border)"><span class="tag ${tagClass}">${ct}</span></td>
-      ${cells}
-      ${totalCells}
-    </tr>`;
+    const controlTotalCells = `
+      <td style="border-left:2px solid var(--accent);background:rgba(20,184,166,.04)">${totalControlAA !== null ? fmt(totalControlAA) : '—'}</td>
+      <td style="background:rgba(20,184,166,.04)">${totalControlAB !== null ? fmt(totalControlAB) : '—'}</td>
+      <td class="null-cell" style="background:rgba(20,184,166,.04)">—</td>
+      <td class="null-cell" style="background:rgba(20,184,166,.04);border-right:none">—</td>`;
+    const treatedTotalCells = `
+      <td style="border-left:2px solid var(--accent);background:rgba(20,184,166,.04)">${fmt(totalTreatedAA)}</td>
+      <td style="background:rgba(20,184,166,.04)">${fmt(totalTreatedAB)}</td>
+      <td style="background:rgba(20,184,166,.04)">${totalLift !== null ? `<span class="stat-val ${totalLiftColor}" style="font-size:.95rem">${totalLift >= 0 ? '+' : ''}${fmt(totalLift)}</span>` : '—'}</td>
+      <td style="background:rgba(20,184,166,.04);border-right:none">${totalLiftPct !== null ? `<span class="stat-val ${totalLiftColor}" style="font-size:.95rem">${totalLiftPct >= 0 ? '+' : ''}${totalLiftPct.toFixed(2)}%</span>` : '—'}</td>`;
+    return `
+      <tr>
+        <td style="border-right:1px solid var(--border)"><span class="tag ${tagClassFor(bType)}">${bType} (scaled to ${arm})</span></td>
+        ${controlCells}${controlTotalCells}
+      </tr>
+      <tr>
+        <td style="border-right:1px solid var(--border)"><span class="tag ${tagClassFor(arm)}">${arm}</span></td>
+        ${treatedCells}${treatedTotalCells}
+      </tr>`;
   }).join('');
+  document.getElementById('pivot-body').innerHTML = summaryRows;
 
   renderWindowLift(filtered, segments);
+  renderDailyOrders(rows);
 }
 
 // AB vs AC lift split — derives AC locally from stashed dates; global period model untouched.
@@ -1849,12 +2143,19 @@ function renderWindowLift(filtered, segments) {
 
   document.getElementById('window-lift-head').innerHTML = `
     <tr>
-      <th rowspan="2" style="border-right:1px solid var(--border);vertical-align:bottom;">Segment</th>
+      <th rowspan="3" style="border-right:1px solid var(--border);vertical-align:bottom;">Segment</th>
       ${arms.map(arm => `<th colspan="7" style="text-align:center;border-right:2px solid var(--border2);border-bottom:1px solid var(--border);">${arm}</th>`).join('')}
     </tr>
     <tr>
       ${arms.map(() => `
-        <th class="th-factor">Factor</th>
+        <th class="th-factor" rowspan="2">Factor</th>
+        <th colspan="2" style="text-align:center;color:var(--accent2);border-left:2px solid var(--accent2)">AB</th>
+        <th colspan="2" style="text-align:center;color:#6366f1;border-left:2px solid #6366f1">AC</th>
+        <th colspan="2" style="text-align:center;color:var(--accent);border-left:2px solid var(--accent);border-right:2px solid var(--border2)">Total</th>
+      `).join('')}
+    </tr>
+    <tr>
+      ${arms.map(() => `
         <th class="th-factor" style="border-left:2px solid var(--accent2)">Lift</th><th class="th-factor">Lift %</th>
         <th class="th-factor" style="border-left:2px solid #6366f1">Lift</th><th class="th-factor">Lift %</th>
         <th class="th-factor" style="border-left:2px solid var(--accent)">Lift</th><th class="th-factor" style="border-right:2px solid var(--border2)">Lift %</th>
@@ -2944,7 +3245,7 @@ function addUniqueSheet(wb, wsName, aoa) {
 
 function buildSummarySheet(wb, rows, labelSuffix, bType, arms, cellTypes) {
   const segments = [...new Set(rows.map(r => r.target_variable_nm || '(unknown)'))].sort();
-  const filtered = excludedPairs.size > 0 ? rows.filter(r => !excludedPairs.has(String(r.pair))) : rows;
+  const filtered = applyPairExclusions(rows);
   const agg = {};
   filtered.forEach(r => {
     if (r.period !== 'AA' && r.period !== 'AB') return;
@@ -3052,6 +3353,74 @@ function buildGeoSheets(wb, rows, labelSuffix, bType, arms) {
   });
 }
 
+function buildDailyOrdersSheets(wb, rows, bType, arms) {
+  const includedRows = applyPairExclusions(rows).filter(r =>
+    (r.period === 'AA' || r.period === 'AB') && isAnalyzedType(r.cell_type)
+  );
+  const outcomes = [...new Set(rows.map(r => r.target_variable_nm || '(unknown)'))].sort();
+
+  outcomes.forEach(outcome => {
+    const sourceOutcomeRows = rows.filter(r => (r.target_variable_nm || '(unknown)') === outcome);
+    const outcomeRows = includedRows.filter(r => (r.target_variable_nm || '(unknown)') === outcome);
+    const categories = [...new Set(sourceOutcomeRows.map(r => r.category_nm || '(unknown)'))].sort();
+    const aaTotals = new Map();
+    const dailyTotals = new Map();
+    const days = new Map();
+
+    outcomeRows.forEach(r => {
+      const category = r.category_nm || '(unknown)';
+      const day = String(r.day || '');
+      const aaKey = JSON.stringify([r.cell_type, category]);
+      const dailyKey = JSON.stringify([r.period, day, r.cell_type, category]);
+      if (r.period === 'AA') aaTotals.set(aaKey, (aaTotals.get(aaKey) || 0) + toNum(r.orders));
+      dailyTotals.set(dailyKey, (dailyTotals.get(dailyKey) || 0) + toNum(r.orders));
+      days.set(JSON.stringify([r.period, day]), { period: r.period, day });
+    });
+
+    const factors = arms.map(arm => {
+      const key = factorKey(outcome, arm);
+      if (customFactors[key] !== undefined) return customFactors[key];
+      const baseAA = categories.reduce((sum, category) => sum + (aaTotals.get(JSON.stringify([bType, category])) || 0), 0);
+      const armAA = categories.reduce((sum, category) => sum + (aaTotals.get(JSON.stringify([arm, category])) || 0), 0);
+      return baseAA > 0 ? armAA / baseAA : null;
+    });
+
+    const headers = ['Period', 'Day'];
+    [bType, ...arms].forEach(cellType => {
+      categories.forEach(category => headers.push(`${cellType} - ${category}`));
+    });
+    arms.forEach((arm, armIndex) => {
+      const factor = factors[armIndex];
+      const factorText = factor === null || factor === undefined ? 'no factor' : `FV ${factor.toFixed(4)}`;
+      categories.forEach(category => headers.push(`Adjusted ${bType} (${arm}, ${factorText}) - ${category}`));
+    });
+
+    const sortedDays = [...days.values()].sort((a, b) => {
+      const periodOrder = { AA: 0, AB: 1 };
+      if (a.period !== b.period) return periodOrder[a.period] - periodOrder[b.period];
+      const dateA = parseDateLoose(a.day), dateB = parseDateLoose(b.day);
+      return dateA && dateB ? dateA - dateB : a.day.localeCompare(b.day);
+    });
+    const valueFor = (period, day, cellType, category) =>
+      dailyTotals.get(JSON.stringify([period, day, cellType, category])) || 0;
+
+    const data = [headers, ...sortedDays.map(({ period, day }) => [
+      period,
+      day,
+      ...[bType, ...arms].flatMap(cellType =>
+        categories.map(category => valueFor(period, day, cellType, category))
+      ),
+      ...arms.flatMap((arm, armIndex) => categories.map(category => {
+        const factor = factors[armIndex];
+        return factor === null || factor === undefined
+          ? ''
+          : valueFor(period, day, bType, category) * factor;
+      }))
+    ])];
+    addUniqueSheet(wb, `Daily Orders - ${outcome}`, data);
+  });
+}
+
 function buildDailySheets(wb, rows, labelSuffix, bType, arms) {
   const segments = [...new Set(rows.map(r => r.target_variable_nm || '(unknown)'))].sort();
   segments.forEach(seg => {
@@ -3131,9 +3500,22 @@ function exportExcel() {
     buildDailySheets(wb, scoped, label, bType, arms);
   });
 
+  buildDailyOrdersSheets(wb, allRows, bType, arms);
+
   // ── Sheet: Full Dataset ──────────────────────────────────────────────────────
   if (mergedRows.length) {
-    const dsData = [DISPLAY_COLS, ...mergedRows.map(r => DISPLAY_COLS.map(c => r[c] || ''))];
+    const numericColumns = new Set(['orders', 'actual_sales', 'sales', 'aov']);
+    const dsData = [
+      DISPLAY_COLS,
+      ...mergedRows.map(row => DISPLAY_COLS.map(column => {
+        const value = row[column];
+        if (value === null || value === undefined || value === '') return '';
+        if (!numericColumns.has(column)) return value;
+
+        const numericValue = Number(String(value).trim().replace(/,/g, '').replace(/\$/g, ''));
+        return Number.isFinite(numericValue) ? numericValue : value;
+      }))
+    ];
     addUniqueSheet(wb, 'Full Dataset', dsData);
   }
 

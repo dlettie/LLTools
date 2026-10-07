@@ -42,16 +42,27 @@ You also provide three dates:
 
 After processing, the page displays:
 
-- **Summary statistics** across control and treated cells, by segment
-- **Lift by window** — AB vs AC comparison
+- **Pre-window factors** above the summary statistics — one editable factor per
+  outcome and treated arm, calculated across its categories and recalculated
+  from the included pairs' AA split; manual overrides remain until reset
+- **Outcome-specific pair filtering** — exclude matched pairs for one outcome
+  without removing them from the others
+- **Summary statistics** pair each treated arm with a control row scaled by its
+  factor for both AA and AB, so their included-pair AA conversions match;
+  lifts compare treated AB with scaled control AB
+- **Lift by window** — clearly labeled AB, AC, and combined-total lift comparisons
+- **Daily orders** by outcome and category, with raw control/treated totals and
+  factor-adjusted control values, editable AA factors, outcome-specific geo
+  exclusions, and a period column
 - **A pair filter** for excluding specific control/treatment pairs
 - **Geo-level lift analysis** per segment
 - **Daily cumulative factor** trends
 - **Lift charts** with hover tooltips
 - **The full merged dataset** in a searchable, filterable table
 
-The Excel export produces a workbook with a Summary Stats sheet plus per-segment
-Geo Lift and Daily Factor sheets, and a Full Dataset sheet.
+The Excel export produces a workbook with a Summary Stats sheet, per-segment
+Geo Lift and Daily Factor sheets, per-outcome Daily Orders sheets with numeric
+control, treated, and factor-adjusted control totals, and a Full Dataset sheet.
 
 The merged dataset uses these columns: `day`, `geo_id`, `DMA`, `period`, `cell`,
 `cell_type`, `pair`, `target_variable_nm`, `category_nm`, `category_type`,
