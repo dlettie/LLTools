@@ -1114,28 +1114,43 @@
         return row;
       });
 
-      // Map to MMA
-      // Build two lookup maps: one for locationCode, one for dmaCode
-      const locationCodeMap = {};  // For COMSCORE_MARKET
-      const dmaCodeMap = {};        // For DMA
+      // Map to MMA. Accept both legacy camelCase fields (locationCode,
+      // dmaCode, cellType) and common CSV variants (DMA ID, DMA, Cell Type).
+      const normalizeHeader = value => String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      const findMmaColumn = aliases => {
+        const columns = Object.keys(state.mmaData[0] || {});
+        const aliasSet = new Set(aliases.map(normalizeHeader));
+        return columns.find(column => aliasSet.has(normalizeHeader(column)));
+      };
+      const locationCodeColumn = findMmaColumn(['locationCode', 'location_code', 'location code']);
+      const dmaCodeColumn = findMmaColumn(['dmaCode', 'dma_code', 'DMA ID', 'DMA']);
+      const cellTypeColumn = findMmaColumn(['cellType', 'cell_type', 'Cell Type']);
+      const normalizeGeoId = value => String(value == null ? '' : value).trim();
+      const locationCodeMap = Object.create(null);  // For COMSCORE_MARKET
+      const dmaCodeMap = Object.create(null);       // For DMA
 
       state.mmaData.forEach(row => {
-        if (row.locationCode) {
-          locationCodeMap[row.locationCode] = row.cellType;
+        const cellType = cellTypeColumn ? String(row[cellTypeColumn] || '').trim() : '';
+        if (!cellType) return;
+        if (locationCodeColumn) {
+          const key = normalizeGeoId(row[locationCodeColumn]);
+          if (key) locationCodeMap[key] = cellType;
         }
-        if (row.dmaCode) {
-          dmaCodeMap[row.dmaCode] = row.cellType;
+        if (dmaCodeColumn) {
+          const key = normalizeGeoId(row[dmaCodeColumn]);
+          if (key) dmaCodeMap[key] = cellType;
         }
       });
 
       console.log('=== MAPPING SETUP ===');
+      console.log('MMA columns selected:', { locationCodeColumn, dmaCodeColumn, cellTypeColumn });
       console.log('locationCodeMap:', locationCodeMap);
       console.log('dmaCodeMap:', dmaCodeMap);
 
       // Map sales data to cellType based on random_location_type
       state.mappedData = state.salesData.map(row => {
-        const locationType = row.random_location_type || 'UNKNOWN';
-        const geoId = row.geo_id;
+        const locationType = String(row.random_location_type || 'UNKNOWN').trim().toUpperCase();
+        const geoId = normalizeGeoId(row.geo_id);
         
         if (locationType === 'COMSCORE_MARKET') {
           // Lookup by locationCode
