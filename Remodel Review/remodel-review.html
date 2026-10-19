@@ -181,7 +181,7 @@
 <div class="container">
   <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap">
     <div><h1>Remodel Review</h1>
-      <p class="sub">Compare a remodel against the production model: bucket mix, paid media contribution and channel detail. Data stays in your browser.</p></div>
+      <p class="sub" id="pageSubtitle">Compare a remodel against the production model: bucket mix, paid media contribution and channel detail. Data stays in your browser.</p></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn" id="previewPdfBtn" disabled title="Run the review first">Preview PDF</button>
       <button class="btn" id="exportPdfBtn" disabled title="Run the review first">Export PDF</button>
@@ -207,8 +207,9 @@
     </div>
     <div class="card">
       <h2>Upload</h2>
-      <p class="hint">Drop in the model workbook. The tool finds the Prod and Remodel sheets by name (e.g. <b>Prod_data</b>, <b>Remodel_data</b>), or upload files with “prod” and “remodel” in their names. Use the optional second Remodel source when the Remodel is split across two datasets. Prod and Remodel can use different bucket mapping sheets. Your setup is saved in this browser automatically.</p>
+      <p class="hint">Drop in the model workbook. The tool finds Prod and Remodel sheets by name (e.g. <b>Prod_data</b>, <b>Remodel_data</b>), or upload files with “prod” and “remodel” in their names. If the workbook has only one model, it will be loaded as a standalone version for review. Use the optional second Remodel source when the Remodel is split across two datasets. Your setup is saved in this browser automatically.</p>
       <input type="file" id="uploadInput" accept=".xlsx,.xls,.csv" multiple>
+      <label style="display:flex;gap:7px;align-items:center;margin-top:10px;font-size:13px;color:var(--text);font-weight:500"><input type="checkbox" id="noProdInput"> Review without Prod data</label>
       <div class="filebadge" id="uploadStatus"></div>
       <div class="setup-actions" style="margin-top:10px"><button class="btn" id="forgetSetupBtn" title="Clears everything saved in this browser and starts fresh">Forget saved setup</button></div>
     </div>
@@ -315,7 +316,7 @@ const FIELDS = [
 const SLOTS = { prod: { title: 'Prod data', sub: 'What came before', sheet: 'prod_data' }, remodel: { title: 'Remodel data', sub: 'What exists now', sheet: 'remodel_data' }, remodel2: { title: 'Additional Remodel data (optional)', sub: 'A second Remodel source, combined with the first', sheet: '' } };
 const state = {
   sources: [],
-  isWorkingCopy: false,   // true once opened from an exported working copy — keeps the Setup tab hidden across reloads too
+  isWorkingCopy: false, singleModel: false,   // singleModel means the upload contains one version, with no before/after comparison
   files: { prod: null, remodel: null, remodel2: null },      // Remodel sources are combined for analysis
   mapSources: [], mapCfg: { idx: '', chCol: '', bkCol: '' }, remodelMapCfg: { idx: '', chCol: '', bkCol: '' }, mapBuckets: new Map(), remodelMapBuckets: new Map(), mapIssues: { rows: 0, bad: [], conflicts: [] }, remodelMapIssues: { rows: 0, bad: [], conflicts: [] },
   bucketOverrides: {}, outcomeGroups: {}, outcomeExclude: {}, channelFlags: {}, channelChanges: [],
@@ -346,12 +347,14 @@ const persist = () => {
       channelFlags: state.channelFlags, channelChanges: state.channelChanges, notes: state.notes,
       snapshots: state.snapshots,
       clientName: state.clientName,
+      singleModel: state.singleModel,
       mapBuckets: [...state.mapBuckets], remodelMapBuckets: [...state.remodelMapBuckets], mapCfg: state.mapCfg, remodelMapCfg: state.remodelMapCfg, viewTab: state.view.tab, isWorkingCopy: state.isWorkingCopy,
     };
     // Only save file data once both sides are fully aggregated — never a half-loaded state, and never overwrite
     // a previously-saved complete setup with an in-progress one.
     if (state.files.prod?.agg && state.files.remodel?.agg) {
       payload.files = {
+        singleModel: state.singleModel,
         prod: { name: state.files.prod.name, agg: state.files.prod.agg, spendRepeats: state.files.prod.spendRepeats, map: state.files.prod.map },
         remodel: { name: state.files.remodel.name, agg: state.files.remodel.agg, spendRepeats: state.files.remodel.spendRepeats, map: state.files.remodel.map },
         remodel2: state.files.remodel2?.agg ? { name: state.files.remodel2.name, agg: state.files.remodel2.agg, spendRepeats: state.files.remodel2.spendRepeats, map: state.files.remodel2.map } : null,
@@ -435,10 +438,15 @@ async function loadUpload(fileList) {
   const secondRemodel = sources.map(src => ({ src, sc: scoreSource(src, 'remodel') })).filter(x => x.sc > 0 && x.src !== firstRemodel).sort((a, b) => b.sc - a.sc)[0];
   if (secondRemodel) pick.set('remodel2', secondRemodel.src);
   if (pick.get('prod') === pick.get('remodel')) pick.delete('prod'), pick.delete('remodel');   // ambiguous
+  if (sources.length === 1) { pick.clear(); pick.set('remodel', sources[0]); }
+  state.singleModel = !pick.get('prod') && !!(pick.get('remodel') || pick.get('remodel2'));
+  $('#noProdInput').checked = state.singleModel;
+  if (state.singleModel) { if (!pick.get('remodel') && pick.get('remodel2')) { pick.set('remodel', pick.get('remodel2')); pick.delete('remodel2'); } state.view.mixMode = 'remodel'; state.view.detailMode = 'remodel'; }
+  applySingleModelUI();
   const found = ['prod', 'remodel', 'remodel2'].filter(w => pick.get(w)).map(w => `${SLOTS[w].title} → ${pick.get(w).label}`);
   status.innerHTML = !sources.length ? '<span class="down">No sheets with Channel, Business Outcome, Spend and Revenue columns were found.</span>'
     : found.length >= 2 ? `Identified ${found.map(x => `<b>${esc(x)}</b>`).join(' and ')}.`
-    : `${found.length ? esc(found.join(' · ')) + '. ' : ''}<span class="down">Could not tell which sheet is ${found.length ? 'the other' : 'Prod or Remodel'}. Choose below.</span>`;
+    : state.singleModel ? `Loaded without Prod data: <b>${esc(pick.get('remodel').label)}</b>.` : `${found.length ? esc(found.join(' · ')) + '. ' : ''}<span class="down">Could not tell which sheet is ${found.length ? 'the other' : 'Prod or Remodel'}. Choose below.</span>`;
   for (const which of ['prod', 'remodel', 'remodel2']) renderSlot(which);
   for (const which of ['prod', 'remodel', 'remodel2']) if (pick.get(which)) useSource(which, pick.get(which));
   refreshSetup();   // also resets the bucket/outcome tables and Run button when nothing was identified
@@ -458,6 +466,12 @@ function useSource(which, src) {
   }
   renderSlot(which);
   aggregate(which);
+  if (state.singleModel && which === 'remodel') {
+    // The analysis engine expects two sides. Mirror the lone dataset internally, while the UI suppresses comparison.
+    state.files.prod = { ...f, name: f.name, agg: f.agg, map: { ...f.map } };
+    renderSlot('prod');
+    refreshSetup();
+  }
 }
 
 function renderMapper(which) {
@@ -752,9 +766,21 @@ function renderOutcomeTable() {
 }
 
 function updateGo() {
-  const ready = state.files.prod?.agg && state.files.remodel?.agg;
+  const ready = state.files.remodel?.agg && (state.singleModel || state.files.prod?.agg);
   $('#goBtn').disabled = !ready;
-  $('#goMsg').textContent = ready ? '' : 'Load and map Prod and Remodel data to run the review.';
+  $('#goMsg').textContent = ready ? '' : 'Load and map a model version to run the review.';
+}
+
+function applySingleModelUI() {
+  const compareTab = $('#tabs [data-tab="compare"]');
+  compareTab.hidden = state.singleModel;
+  $('#pageSubtitle').textContent = state.singleModel
+    ? 'Standalone model review: bucket mix, paid media contribution and channel detail. Data stays in your browser.'
+    : 'Compare a remodel against the production model: bucket mix, paid media contribution and channel detail. Data stays in your browser.';
+  if (state.singleModel) {
+    state.view.mixMode = 'remodel';
+    state.view.detailMode = 'remodel';
+  }
 }
 
 $('#bucketFilter').addEventListener('input', renderBucketTable);
@@ -1037,6 +1063,7 @@ function wireChannelChanges(root) {
 
 /* ============================== analysis UI ============================== */
 function setTab(tab) {
+  if (state.singleModel && tab === 'compare') tab = 'mix';
   state.view.tab = tab;
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
   $('#tab-setup').hidden = tab !== 'setup';
@@ -1048,7 +1075,7 @@ function setTab(tab) {
 }
 $('#tabs').addEventListener('click', e => { const b = e.target.closest('.tab-btn'); if (b && !b.disabled) setTab(b.dataset.tab); });
 $('#goBtn').addEventListener('click', () => {
-  document.querySelectorAll('.tab-btn').forEach(b => b.disabled = false);
+  document.querySelectorAll('.tab-btn').forEach(b => { if (!b.hidden) b.disabled = false; });
   $('#exportReportBtn').disabled = false; $('#exportReportBtn').title = '';
   $('#exportPdfBtn').disabled = false; $('#exportPdfBtn').title = '';
   $('#previewPdfBtn').disabled = false; $('#previewPdfBtn').title = '';
@@ -1677,6 +1704,7 @@ function exportWorkingCopy() {
     prod: { name: state.files.prod.name, agg: state.files.prod.agg, spendRepeats: state.files.prod.spendRepeats, map: state.files.prod.map },
     remodel: { name: state.files.remodel.name, agg: state.files.remodel.agg, spendRepeats: state.files.remodel.spendRepeats, map: state.files.remodel.map },
     remodel2: state.files.remodel2?.agg ? { name: state.files.remodel2.name, agg: state.files.remodel2.agg, spendRepeats: state.files.remodel2.spendRepeats, map: state.files.remodel2.map } : null,
+    singleModel: state.singleModel,
     bucketOverrides: state.bucketOverrides, outcomeGroups: state.outcomeGroups, outcomeExclude: state.outcomeExclude, channelFlags: state.channelFlags, channelChanges: state.channelChanges,
     mapBuckets: [...state.mapBuckets], remodelMapBuckets: [...state.remodelMapBuckets], mapCfg: state.mapCfg, remodelMapCfg: state.remodelMapCfg, notes: state.notes, view: state.view, snapshots: state.snapshots, clientName: state.clientName,
   };
@@ -1768,6 +1796,8 @@ function hydrateFromExport(data) {
   state.files.prod = { name: data.prod.name, agg: data.prod.agg, spendRepeats: data.prod.spendRepeats, map: data.prod.map || {}, rows: [], headers: [] };
   state.files.remodel = { name: data.remodel.name, agg: data.remodel.agg, spendRepeats: data.remodel.spendRepeats, map: data.remodel.map || {}, rows: [], headers: [] };
   state.files.remodel2 = data.remodel2 ? { name: data.remodel2.name, agg: data.remodel2.agg, spendRepeats: data.remodel2.spendRepeats, map: data.remodel2.map || {}, rows: [], headers: [] } : null;
+  state.singleModel = !!data.singleModel;
+  if (state.singleModel) state.files.prod = { ...state.files.remodel, map: { ...state.files.remodel.map } };
   renderSlot('prod'); renderSlot('remodel'); renderSlot('remodel2');
   $('#badge-prod').textContent = `${data.prod.name} · loaded from export`;
   $('#badge-remodel').textContent = `${data.remodel.name} · loaded from export`;
@@ -1789,6 +1819,7 @@ function hydrateFromExport(data) {
   Object.assign(state.view, data.view || {});
   state.isWorkingCopy = true;
   refreshSetup();
+  applySingleModelUI();
   document.querySelectorAll('.tab-btn').forEach(b => b.disabled = false);
   $('#exportReportBtn').disabled = false; $('#exportReportBtn').title = '';
   $('#exportPdfBtn').disabled = false; $('#exportPdfBtn').title = '';
@@ -1814,6 +1845,7 @@ function restoreSavedSetup() {
   $('#badge-remodel').textContent = `${state.files.remodel.name} · restored from your last session`;
   if (state.files.remodel2) $('#badge-remodel2').textContent = `${state.files.remodel2.name} · restored from your last session`;
   refreshSetup();
+  applySingleModelUI();
   if (state.isWorkingCopy) $('#tabs [data-tab="setup"]').style.display = 'none';
   if (['mix', 'paid', 'detail', 'compare', 'snapshots'].includes(state.view.tab)) {
     document.querySelectorAll('.tab-btn').forEach(b => b.disabled = false);
@@ -1826,6 +1858,17 @@ function restoreSavedSetup() {
 
 /* ============================== boot ============================== */
 $('#uploadInput').addEventListener('change', e => e.target.files.length && loadUpload([...e.target.files]));
+$('#noProdInput').addEventListener('change', e => {
+  state.singleModel = e.target.checked;
+  if (state.singleModel && !state.files.remodel?.agg && state.files.prod?.agg) {
+    state.files.remodel = { ...state.files.prod, map: { ...state.files.prod.map } };
+    renderSlot('remodel');
+  } else if (state.singleModel && state.files.remodel?.agg && !state.files.prod?.agg) {
+    state.files.prod = { ...state.files.remodel, map: { ...state.files.remodel.map } };
+    renderSlot('prod');
+  }
+  applySingleModelUI(); refreshSetup(); persist();
+});
 $('#notesSetup').value = state.notes.setup;
 $('#clientName').value = state.clientName || '';
 $('#clientName').addEventListener('input', e => { state.clientName = e.target.value; persist(); });
@@ -1840,7 +1883,7 @@ $('#forgetSetupBtn').addEventListener('click', () => {
 // further edits made after first opening it aren't lost) always wins over a freshly-baked-in export snapshot.
 if (state.files.prod?.agg && state.files.remodel?.agg) restoreSavedSetup();
 else if (window.__EXPORT_STATE__) hydrateFromExport(window.__EXPORT_STATE__);
-else { renderSlot('prod'); renderSlot('remodel'); renderSlot('remodel2'); }
+else { renderSlot('prod'); renderSlot('remodel'); renderSlot('remodel2'); applySingleModelUI(); }
 </script>
 </body>
 </html>
